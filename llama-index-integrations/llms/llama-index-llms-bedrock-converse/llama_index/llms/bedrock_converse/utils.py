@@ -6,35 +6,36 @@ from typing import (
     Callable,
     Dict,
     List,
+    Literal,
     Optional,
     Sequence,
     Tuple,
-    Literal,
     Union,
 )
-from typing_extensions import TypedDict
+
+from botocore.exceptions import ClientError
+from llama_index.core.base.llms.types import (
+    AudioBlock,
+    CachePoint,
+    ChatMessage,
+    ChatResponse,
+    ContentBlock,
+    DocumentBlock,
+    ImageBlock,
+    MessageRole,
+    TextBlock,
+    ThinkingBlock,
+    ToolCallBlock,
+)
 from tenacity import (
     before_sleep_log,
     retry,
+    retry_if_exception,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
-
-from llama_index.core.base.llms.types import (
-    ChatMessage,
-    ChatResponse,
-    MessageRole,
-    ImageBlock,
-    TextBlock,
-    ContentBlock,
-    AudioBlock,
-    DocumentBlock,
-    CachePoint,
-    ThinkingBlock,
-    ToolCallBlock,
-)
-
+from typing_extensions import NotRequired, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,8 @@ BEDROCK_MODELS = {
     "amazon.nova-pro-v1:0": 300000,
     "amazon.nova-lite-v1:0": 300000,
     "amazon.nova-micro-v1:0": 128000,
+    "amazon.nova-2-lite-v1:0": 1000000,
+    "amazon.nova-2-pro-preview-20251202-v1:0": 1000000,
     "amazon.titan-text-express-v1": 8192,
     "amazon.titan-text-lite-v1": 4096,
     "amazon.titan-text-premier-v1:0": 3072,
@@ -63,8 +66,10 @@ BEDROCK_MODELS = {
     "anthropic.claude-opus-4-20250514-v1:0": 200000,
     "anthropic.claude-opus-4-1-20250805-v1:0": 200000,
     "anthropic.claude-opus-4-5-20251101-v1:0": 200000,
+    "anthropic.claude-opus-4-6-v1": 200000,
     "anthropic.claude-sonnet-4-20250514-v1:0": 200000,
     "anthropic.claude-sonnet-4-5-20250929-v1:0": 200000,
+    "anthropic.claude-sonnet-4-6": 200000,
     "anthropic.claude-haiku-4-5-20251001-v1:0": 200000,
     "ai21.j2-mid-v1": 8192,
     "ai21.j2-ultra-v1": 8192,
@@ -102,6 +107,8 @@ BEDROCK_FUNCTION_CALLING_MODELS = (
     "amazon.nova-pro-v1:0",
     "amazon.nova-lite-v1:0",
     "amazon.nova-micro-v1:0",
+    "amazon.nova-2-lite-v1:0",
+    "amazon.nova-2-pro-preview-20251202-v1:0",
     "anthropic.claude-3-sonnet-20240229-v1:0",
     "anthropic.claude-3-haiku-20240307-v1:0",
     "anthropic.claude-3-opus-20240229-v1:0",
@@ -112,8 +119,10 @@ BEDROCK_FUNCTION_CALLING_MODELS = (
     "anthropic.claude-opus-4-20250514-v1:0",
     "anthropic.claude-opus-4-1-20250805-v1:0",
     "anthropic.claude-opus-4-5-20251101-v1:0",
+    "anthropic.claude-opus-4-6-v1",
     "anthropic.claude-sonnet-4-20250514-v1:0",
     "anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "anthropic.claude-sonnet-4-6",
     "anthropic.claude-haiku-4-5-20251001-v1:0",
     "cohere.command-r-v1:0",
     "cohere.command-r-plus-v1:0",
@@ -135,6 +144,8 @@ BEDROCK_INFERENCE_PROFILE_SUPPORTED_MODELS = (
     "amazon.nova-pro-v1:0",
     "amazon.nova-lite-v1:0",
     "amazon.nova-micro-v1:0",
+    "amazon.nova-2-lite-v1:0",
+    "amazon.nova-2-pro-preview-20251202-v1:0",
     "anthropic.claude-3-sonnet-20240229-v1:0",
     "anthropic.claude-3-haiku-20240307-v1:0",
     "anthropic.claude-3-opus-20240229-v1:0",
@@ -145,8 +156,10 @@ BEDROCK_INFERENCE_PROFILE_SUPPORTED_MODELS = (
     "anthropic.claude-opus-4-20250514-v1:0",
     "anthropic.claude-opus-4-1-20250805-v1:0",
     "anthropic.claude-opus-4-5-20251101-v1:0",
+    "anthropic.claude-opus-4-6-v1",
     "anthropic.claude-sonnet-4-20250514-v1:0",
     "anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "anthropic.claude-sonnet-4-6",
     "anthropic.claude-haiku-4-5-20251001-v1:0",
     "meta.llama3-1-8b-instruct-v1:0",
     "meta.llama3-1-70b-instruct-v1:0",
@@ -166,8 +179,10 @@ BEDROCK_PROMPT_CACHING_SUPPORTED_MODELS = (
     "anthropic.claude-opus-4-20250514-v1:0",
     "anthropic.claude-opus-4-1-20250805-v1:0",
     "anthropic.claude-opus-4-5-20251101-v1:0",
+    "anthropic.claude-opus-4-6-v1",
     "anthropic.claude-sonnet-4-20250514-v1:0",
     "anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "anthropic.claude-sonnet-4-6",
     "anthropic.claude-haiku-4-5-20251001-v1:0",
     "amazon.nova-premier-v1:0",
     "amazon.nova-pro-v1:0",
@@ -176,14 +191,23 @@ BEDROCK_PROMPT_CACHING_SUPPORTED_MODELS = (
 )
 
 BEDROCK_REASONING_MODELS = (
+    "amazon.nova-2-lite-v1:0",
+    "amazon.nova-2-pro-preview-20251202-v1:0",
     "anthropic.claude-3-7-sonnet-20250219-v1:0",
     "anthropic.claude-opus-4-20250514-v1:0",
     "anthropic.claude-opus-4-1-20250805-v1:0",
     "anthropic.claude-opus-4-5-20251101-v1:0",
+    "anthropic.claude-opus-4-6-v1",
     "anthropic.claude-sonnet-4-20250514-v1:0",
     "anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "anthropic.claude-sonnet-4-6",
     "anthropic.claude-haiku-4-5-20251001-v1:0",
     "deepseek.r1-v1:0",
+)
+
+BEDROCK_ADAPTIVE_THINKING_SUPPORTED_MODELS = (
+    "anthropic.claude-opus-4-6-v1",
+    "anthropic.claude-sonnet-4-6",
 )
 
 
@@ -220,6 +244,10 @@ def is_bedrock_function_calling_model(model_name: str) -> bool:
 
 def is_bedrock_prompt_caching_supported_model(model_name: str) -> bool:
     return get_model_name(model_name) in BEDROCK_PROMPT_CACHING_SUPPORTED_MODELS
+
+
+def is_bedrock_adaptive_thinking_supported_model(model_name: str) -> bool:
+    return get_model_name(model_name) in BEDROCK_ADAPTIVE_THINKING_SUPPORTED_MODELS
 
 
 def bedrock_modelname_to_context_size(model_name: str) -> int:
@@ -261,6 +289,12 @@ def _content_block_to_bedrock_format(
             "text": block.text,
         }
     elif isinstance(block, ThinkingBlock):
+        if role != MessageRole.ASSISTANT:
+            logger.warning(
+                "Bedrock Converse API only supports reasoning content for assistant messages."
+            )
+            return {"text": block.content}
+
         if block.content:
             thinking_data = {
                 "reasoningContent": {"reasoningText": {"text": block.content}}
@@ -491,7 +525,7 @@ def tools_to_converse_tools(
     tool_required: bool = False,
     tool_caching: bool = False,
     supports_forced_tool_calls: bool = True,
-) -> Dict[str, Any]:
+) -> Optional[Dict[str, Any]]:
     """
     Converts a list of tools to AWS Bedrock Converse tools.
 
@@ -499,9 +533,12 @@ def tools_to_converse_tools(
         tools: List of BaseTools
 
     Returns:
-        AWS Bedrock Converse tools
+        AWS Bedrock Converse tools, or None if tools list is empty
 
     """
+    if not tools:
+        return None
+
     converse_tools = []
     for tool in tools:
         tool_name, tool_description = tool.metadata.name, tool.metadata.description
@@ -563,9 +600,36 @@ def _create_retry_decorator(client: Any, max_retries: int) -> Callable[[Any], An
         reraise=True,
         stop=stop_after_attempt(max_retries),
         wait=wait_exponential(multiplier=1, min=min_seconds, max=max_seconds),
-        retry=(retry_if_exception_type(client.exceptions.ThrottlingException)),
+        retry=(
+            retry_if_exception_type(
+                (
+                    client.exceptions.ThrottlingException,
+                    client.exceptions.InternalServerException,
+                    client.exceptions.ServiceUnavailableException,
+                    client.exceptions.ModelTimeoutException,
+                )
+            )
+        ),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
+
+
+RETRYABLE_ERROR_CODES = frozenset(
+    {
+        "ThrottlingException",
+        "InternalServerException",
+        "ServiceUnavailableException",
+        "ModelTimeoutException",
+    }
+)
+
+
+def _is_retryable_client_error(exception: BaseException) -> bool:
+    """Check if an exception is a retryable ClientError from botocore."""
+    if isinstance(exception, ClientError):
+        error_code = exception.response.get("Error", {}).get("Code", "")
+        return error_code in RETRYABLE_ERROR_CODES
+    return False
 
 
 def _create_retry_decorator_async(max_retries: int) -> Callable[[Any], Any]:
@@ -585,9 +649,7 @@ def _create_retry_decorator_async(max_retries: int) -> Callable[[Any], Any]:
         reraise=True,
         stop=stop_after_attempt(max_retries),
         wait=wait_exponential(multiplier=1, min=min_seconds, max=max_seconds),
-        retry=(
-            retry_if_exception_type()
-        ),  # TODO: Add throttling exception in async version
+        retry=retry_if_exception(_is_retryable_client_error),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
 
@@ -823,5 +885,5 @@ def join_two_dicts(dict1: Dict[str, Any], dict2: Dict[str, Any]) -> Dict[str, An
 
 
 class ThinkingDict(TypedDict):
-    type: Literal["enabled"]
-    budget_tokens: int
+    type: Literal["enabled", "adaptive"]
+    budget_tokens: NotRequired[int]

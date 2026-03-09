@@ -4,12 +4,12 @@
 **Referenced Files in This Document**
 - [README.md](file://README.md)
 - [pyproject.toml](file://pyproject.toml)
-- [llama_index\core\__init__.py](file://llama-index-core/llama_index/core/__init__.py)
-- [llama_index\core\service_context.py](file://llama-index-core/llama_index/core/service_context.py)
-- [docs\src\content\docs\framework\understanding\rag\index.mdx](file://docs/src/content/docs/framework/understanding/rag/index.mdx)
-- [docs\examples\cookbooks\oreilly_course_cookbooks\Module-4\Metadata_Extraction.ipynb](file://docs/examples/cookbooks/oreilly_course_cookbooks/Module-4/Metadata_Extraction.ipynb)
-- [llama-index-integrations\README.md](file://llama-index-integrations/README.md)
-- [llama-index-core\README.md](file://llama-index-core/README.md)
+- [llama-index-core/README.md](file://llama-index-core/README.md)
+- [llama-index-core/llama_index/core/__init__.py](file://llama-index-core/llama_index/core/__init__.py)
+- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py)
+- [llama-index-integrations/README.md](file://llama-index-integrations/README.md)
+- [llama-index-packs/README.md](file://llama-index-packs/README.md)
+- [docs/examples/index.md](file://docs/examples/index.md)
 </cite>
 
 ## Table of Contents
@@ -25,304 +25,250 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-LlamaIndex is a data framework for LLM applications. Its purpose is to provide a comprehensive toolkit for data augmentation with private data via retrieval-augmented generation (RAG). The project positions itself as both a beginner-friendly platform for quick prototyping and a flexible, modular foundation for advanced, customized systems. It offers:
-- Data connectors to ingest diverse sources and formats
-- Structuring capabilities to organize data for efficient retrieval
-- Advanced retrieval and query interfaces
-- Seamless integration with external frameworks and providers
+LlamaIndex is a data framework for building Retrieval-Augmented Generation (RAG) applications and other AI-powered systems that connect Large Language Models (LLMs) to your data. It provides a comprehensive toolkit to ingest, structure, retrieve, and synthesize knowledge from heterogeneous data sources, enabling accurate, context-aware responses powered by domain-specific information.
 
-The project supports two primary usage approaches:
+At its core, LlamaIndex offers:
+- Data connectors to bring in your data (files, databases, web sources, etc.)
+- Structuring mechanisms (indices, graphs) to organize data for efficient retrieval
+- Advanced retrieval and query interfaces that augment prompts with relevant context
+- Seamless integrations with external frameworks and providers (LLMs, embeddings, vector stores, etc.)
+
+The framework supports two primary usage approaches:
 - Starter: a curated bundle that includes core and a selection of integrations
-- Customized: core plus chosen integration packages tailored to your stack
+- Customized: install core and add only the integrations you need from the ecosystem
 
-Key benefits include:
-- Rapid 5-line usage for basic RAG pipelines
-- Modular architecture enabling customization of connectors, indices, retrievers, query engines, and more
-- Rich ecosystem of over 300 integrations for LLMs, embeddings, vector stores, readers, and more
-
-**Section sources**
-- [README.md](file://README.md#L11-L78)
-- [README.md](file://README.md#L51-L55)
-- [README.md](file://README.md#L93-L177)
+Beyond core and integrations, LlamaIndex provides packs—ready-to-use templates that accelerate building common RAG and agent workflows.
 
 ## Project Structure
-At a high level, the repository is organized into:
-- Core package: foundational abstractions and building blocks for LLM applications and RAG
-- Integrations: separate packages for LLMs, embeddings, readers/vector stores, and other capabilities
-- CLI and utilities: developer tooling and helpers
-- Docs and examples: tutorials, guides, and practical demonstrations
-- Ecosystem packages: packs and community extensions
+LlamaIndex is organized as a monorepo with multiple packages:
+- Core: foundational abstractions and building blocks (indices, LLMs, embeddings, storage, settings)
+- Integrations: over 300 community-driven packages that plug into core (LLMs, embeddings, readers, vector stores, retrievers, etc.)
+- Packs: reusable templates for common use cases (RAG, agents, multi-modal, etc.)
+- CLI: developer tooling to bootstrap and manage packs
+- Examples and Docs: extensive examples and guides across agents, retrieval, embeddings, vector stores, and more
 
 ```mermaid
 graph TB
+subgraph "Starter Bundle"
+A["llama-index<br/>starter package"]
+end
 subgraph "Core"
-CORE["llama-index-core<br/>Core abstractions and APIs"]
+C["llama-index-core<br/>core abstractions"]
 end
 subgraph "Integrations"
-LLMs["llm integrations"]
-EMB["embedding integrations"]
-READERS["reader/vector store integrations"]
-OTHERS["other capability integrations"]
+I1["llama-index-llms-*"]
+I2["llama-index-embeddings-*"]
+I3["llama-index-readers-*"]
+I4["llama-index-vector_stores-*"]
 end
-subgraph "CLI & Utils"
+subgraph "Packs"
+P1["llama-index-packs-*"]
+end
+subgraph "CLI"
 CLI["llama-index-cli"]
-UTILS["utilities"]
 end
-subgraph "Docs & Examples"
-DOCS["docs and guides"]
-EX["examples and cookbooks"]
-end
-subgraph "Ecosystem"
-PACKS["llama-index-packs"]
-ECOSYS["community ecosystem"]
-end
-CORE --> LLMs
-CORE --> EMB
-CORE --> READERS
-CORE --> OTHERS
-CORE --> CLI
-CORE --> UTILS
-CORE --> DOCS
-CORE --> EX
-CORE --> PACKS
-CORE --> ECOSYS
-```
-
-**Section sources**
-- [README.md](file://README.md#L11-L19)
-- [pyproject.toml](file://pyproject.toml#L41-L50)
-- [llama-index-integrations\README.md](file://llama-index-integrations/README.md#L1-L5)
-
-## Core Components
-The core package exposes top-level imports for indices, readers, prompts, service context, storage, and settings. It serves as the foundation for building RAG pipelines and integrates with integrations to extend capabilities.
-
-Representative highlights:
-- Indices: list, tree, keyword table, vector store, summary, and graph-based indices
-- Readers: data ingestion utilities (e.g., directory reader)
-- Prompts and prompt templates
-- Service context and settings for configuration
-- Storage context for persistence
-- Utilities for tokenization and SQL wrappers
-
-These components collectively enable loading, indexing, storing, querying, and synthesizing responses in RAG workflows.
-
-**Section sources**
-- [llama_index\core\__init__.py](file://llama-index-core/llama_index/core/__init__.py#L24-L87)
-- [llama_index\core\__init__.py](file://llama-index-core/llama_index/core/__init__.py#L93-L150)
-
-## Architecture Overview
-LlamaIndex’s architecture centers on a data framework that orchestrates data ingestion, indexing, storage, retrieval, and response synthesis. The core package provides foundational abstractions; integrations plug in providers and capabilities. The CLI and utilities support development workflows.
-
-```mermaid
-graph TB
-User["Developer / Application"]
-STARTER["Starter Package<br/>llama-index"]
-COREPKG["Core Package<br/>llama-index-core"]
-INTEGRATIONS["Integrations<br/>LLMs, Embeddings, Readers, Vector Stores"]
-PIPELINE["RAG Pipeline<br/>Load → Index → Store → Retrieve → Synthesize"]
-APP["LLM Application"]
-User --> STARTER
-User --> COREPKG
-STARTER --> COREPKG
-STARTER --> INTEGRATIONS
-COREPKG --> INTEGRATIONS
-INTEGRATIONS --> PIPELINE
-PIPELINE --> APP
+A --> C
+A --> I1
+A --> I2
+A --> I3
+A --> I4
+C --> I1
+C --> I2
+C --> I3
+C --> I4
+C --> P1
+CLI --> P1
 ```
 
 **Diagram sources**
 - [README.md](file://README.md#L11-L19)
-- [pyproject.toml](file://pyproject.toml#L41-L50)
+- [pyproject.toml](file://pyproject.toml#L42-L49)
+- [llama-index-core/README.md](file://llama-index-core/README.md#L1-L11)
+- [llama-index-integrations/README.md](file://llama-index-integrations/README.md#L1-L5)
+- [llama-index-packs/README.md](file://llama-index-packs/README.md#L1-L33)
 
 **Section sources**
 - [README.md](file://README.md#L11-L19)
-- [pyproject.toml](file://pyproject.toml#L41-L50)
+- [pyproject.toml](file://pyproject.toml#L42-L49)
+- [llama-index-core/README.md](file://llama-index-core/README.md#L1-L11)
+- [llama-index-integrations/README.md](file://llama-index-integrations/README.md#L1-L5)
+- [llama-index-packs/README.md](file://llama-index-packs/README.md#L1-L33)
+
+## Core Components
+LlamaIndex’s core provides the foundational building blocks for RAG and related workflows. These include:
+- Indices: multiple index types (vector, keyword, tree, summary, graph, property graph) to structure data
+- Readers/Data Connectors: load data from files, databases, web sources, and more
+- Prompts and Prompt Helpers: templating and context-aware prompt construction
+- Service Context and Settings: centralized configuration for LLMs, embeddings, tokenizers, node parsers, and transformations
+- Storage Context: persistence and retrieval of indices, docstores, and other artifacts
+- Response Synthesizers: strategies to combine retrieved context with model outputs
+- Utilities: tokenization helpers and SQL wrappers
+
+Key entry points and exports are exposed via the core top-level package, enabling both high-level convenience and granular control.
+
+**Section sources**
+- [llama-index-core/README.md](file://llama-index-core/README.md#L3-L10)
+- [llama-index-core/llama_index/core/__init__.py](file://llama-index-core/llama_index/core/__init__.py#L24-L87)
+- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L248)
+
+## Architecture Overview
+LlamaIndex follows a modular, plugin-based architecture:
+- Core defines the essential abstractions and orchestration
+- Integrations extend core with provider-specific implementations (LLMs, embeddings, readers, vector stores)
+- Packs assemble reusable components into ready-to-run templates
+- CLI helps discover, download, and customize packs
+- Examples demonstrate real-world usage across agents, retrieval, embeddings, and vector stores
+
+```mermaid
+graph TB
+subgraph "User Application"
+UA["Your App"]
+end
+subgraph "LlamaIndex"
+subgraph "Core"
+CORE["Core Abstractions<br/>Indices, Readers, Prompts, Storage, Settings"]
+end
+subgraph "Integrations"
+INT1["LLMs"]
+INT2["Embeddings"]
+INT3["Readers"]
+INT4["Vector Stores"]
+end
+subgraph "Packs"
+PACKS["Reusable Templates"]
+end
+subgraph "CLI"
+CLI["Pack Management"]
+end
+end
+UA --> CORE
+CORE --> INT1
+CORE --> INT2
+CORE --> INT3
+CORE --> INT4
+CORE --> PACKS
+CLI --> PACKS
+```
+
+**Diagram sources**
+- [README.md](file://README.md#L11-L19)
+- [pyproject.toml](file://pyproject.toml#L42-L49)
+- [llama-index-integrations/README.md](file://llama-index-integrations/README.md#L1-L5)
+- [llama-index-packs/README.md](file://llama-index-packs/README.md#L1-L33)
 
 ## Detailed Component Analysis
 
-### RAG Fundamentals (Beginner-Friendly)
-RAG augments LLMs with your private data by retrieving relevant context and combining it with the query to produce grounded answers. The five-stage RAG pipeline is widely applicable and forms the backbone of most LLM applications.
+### Dual Approach to Usage: Starter vs Customized
+- Starter package bundles core plus a curated selection of integrations for quick start
+- Customized approach installs core and adds only the integrations you need, enabling fine-grained control and smaller footprints
+- Import conventions distinguish core usage (via core) from integrations (via integration packages)
+
+Practical example paths:
+- Starter installation and basic usage: [README.md](file://README.md#L95-L120)
+- Customized installation and configuration: [README.md](file://README.md#L95-L120)
+- Import patterns and core vs integration distinction: [README.md](file://README.md#L25-L35)
+
+**Section sources**
+- [README.md](file://README.md#L11-L19)
+- [README.md](file://README.md#L25-L35)
+- [README.md](file://README.md#L95-L120)
+
+### Modular Plugin-Based Architecture
+- Core provides abstractions for LLMs, embeddings, readers, indices, and storage
+- Integrations are separate packages that implement these abstractions for specific providers
+- Packs encapsulate end-to-end workflows combining core and integrations
+
+Example paths:
+- Core exports and indices: [llama-index-core/llama_index/core/__init__.py](file://llama-index-core/llama_index/core/__init__.py#L24-L87)
+- Settings as the central configuration hub: [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L248)
+- Integrations overview: [llama-index-integrations/README.md](file://llama-index-integrations/README.md#L1-L5)
+- Packs usage and discovery: [llama-index-packs/README.md](file://llama-index-packs/README.md#L1-L33)
+
+**Section sources**
+- [llama-index-core/llama_index/core/__init__.py](file://llama-index-core/llama_index/core/__init__.py#L24-L87)
+- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L248)
+- [llama-index-integrations/README.md](file://llama-index-integrations/README.md#L1-L5)
+- [llama-index-packs/README.md](file://llama-index-packs/README.md#L1-L33)
+
+### RAG (Retrieval-Augmented Generation) in LlamaIndex
+RAG is a first-class capability in LlamaIndex:
+- Data ingestion via readers/connectors
+- Indexing and structuring for efficient retrieval
+- Retrieval of relevant context for a query
+- Response synthesis using the selected synthesizer
 
 ```mermaid
 flowchart TD
-A["Load Data<br/>Connectors/readers ingest sources"] --> B["Index Data<br/>Generate embeddings and structures"]
-B --> C["Store Index<br/>Persist metadata and vectors"]
-C --> D["Query Index<br/>Retrieve relevant context"]
-D --> E["Synthesize Response<br/>Prompt + Retrieved Context → LLM"]
-E --> F["Iterate & Evaluate<br/>Accuracy, Faithfulness, Speed"]
+Start(["User Query"]) --> Ingest["Load Documents<br/>via Readers"]
+Ingest --> Index["Build Index<br/>(Vector/Keyword/Graph)"]
+Index --> Retrieve["Retrieve Relevant Nodes<br/>by Query"]
+Retrieve --> Synthesize["Synthesize Response<br/>with LLM"]
+Synthesize --> Output(["Augmented Answer"])
 ```
 
-**Diagram sources**
-- [docs\src\content\docs\framework\understanding\rag\index.mdx](file://docs/src/content/docs/framework/understanding/rag/index.mdx#L22-L36)
+[No sources needed since this diagram shows conceptual workflow, not actual code structure]
+
+### Practical Examples Demonstrating Value Proposition
+Explore guided examples across agents, retrieval, embeddings, and vector stores:
+- Agents and agentic workflows: [docs/examples/index.md](file://docs/examples/index.md#L7-L28)
+- LLM integrations: [docs/examples/index.md](file://docs/examples/index.md#L30-L41)
+- Embedding models: [docs/examples/index.md](file://docs/examples/index.md#L43-L53)
+- Vector stores: [docs/examples/index.md](file://docs/examples/index.md#L54-L67)
 
 **Section sources**
-- [docs\src\content\docs\framework\understanding\rag\index.mdx](file://docs/src/content/docs/framework/understanding/rag/index.mdx#L14-L36)
-- [docs\examples\cookbooks\oreilly_course_cookbooks\Module-4\Metadata_Extraction.ipynb](file://docs/examples/cookbooks/oreilly_course_cookbooks/Module-4/Metadata_Extraction.ipynb#L598-L638)
-
-### Practical Beginner Usage (5-Line Example)
-Beginners can quickly build a vector index and query it using a few lines of code. The starter package simplifies getting started with a curated set of integrations.
-
-```mermaid
-sequenceDiagram
-participant Dev as "Developer"
-participant Starter as "Starter Package"
-participant Core as "Core"
-participant Reader as "Reader"
-participant Index as "VectorStoreIndex"
-Dev->>Starter : Install and import
-Dev->>Reader : Load documents from directory
-Reader-->>Dev : Documents
-Dev->>Index : Build index from documents
-Index-->>Dev : Index ready
-Dev->>Index : Query engine
-Index-->>Dev : Retrieved context + answer
-```
-
-**Diagram sources**
-- [README.md](file://README.md#L105-L159)
-
-**Section sources**
-- [README.md](file://README.md#L105-L159)
-
-### Advanced Customization Patterns (Developer-Focused)
-Advanced users can compose custom pipelines by selecting specific integrations and configuring core components. The core package exposes settings and utilities to tailor behavior, while integrations plug in providers for LLMs, embeddings, readers, and vector stores.
-
-```mermaid
-classDiagram
-class Settings {
-+configure llm
-+configure embed_model
-+configure tokenizer
-}
-class VectorStoreIndex {
-+from_documents(documents)
-+as_query_engine()
-}
-class SimpleDirectoryReader {
-+load_data()
-}
-class HuggingFaceEmbedding {
-+get_vector()
-}
-class Replicate {
-+complete(prompt)
-}
-Settings --> VectorStoreIndex : "configures"
-SimpleDirectoryReader --> VectorStoreIndex : "provides documents"
-HuggingFaceEmbedding --> VectorStoreIndex : "used by index"
-Replicate --> Settings : "configured as llm"
-```
-
-**Diagram sources**
-- [README.md](file://README.md#L125-L151)
-- [llama_index\core\__init__.py](file://llama-index-core/llama_index/core/__init__.py#L78-L87)
-
-**Section sources**
-- [README.md](file://README.md#L125-L151)
-- [llama_index\core\__init__.py](file://llama-index-core/llama_index/core/__init__.py#L78-L87)
-
-### Relationship Between Core and Integrations
-The core package defines foundational abstractions and APIs. Integrations are separate packages that extend core with provider-specific implementations (e.g., LLMs, embeddings, readers, vector stores). The starter package bundles core and a curated subset of integrations, while the customized approach lets you pick and mix integrations from the ecosystem.
-
-```mermaid
-graph TB
-CORE["Core Abstractions"]
-INTL["Integration Packages"]
-STARTER["Starter Bundle"]
-CUSTOM["Custom Selection"]
-CORE --> INTL
-STARTER --> CORE
-STARTER --> INTL
-CUSTOM --> CORE
-CUSTOM --> INTL
-```
-
-**Diagram sources**
-- [README.md](file://README.md#L11-L19)
-- [llama-index-integrations\README.md](file://llama-index-integrations/README.md#L1-L5)
-
-**Section sources**
-- [README.md](file://README.md#L11-L19)
-- [llama-index-integrations\README.md](file://llama-index-integrations/README.md#L1-L5)
-
-### Ecosystem Positioning and Community Resources
-LlamaIndex positions itself as a comprehensive toolkit for building LLM applications with private data. The ecosystem includes:
-- LlamaHub: a community library of data loaders/connectors
-- LlamaLab: cutting-edge AGI projects using LlamaIndex
-- Over 300 integration packages for LLMs, embeddings, vector stores, readers, and more
-
-These resources enable rapid prototyping and advanced customization across diverse domains and stacks.
-
-**Section sources**
-- [README.md](file://README.md#L51-L55)
-- [README.md](file://README.md#L17-L18)
+- [docs/examples/index.md](file://docs/examples/index.md#L1-L68)
 
 ## Dependency Analysis
-The starter package depends on core and a curated set of integrations, while the core package remains the foundation for both starter and customized setups.
+The starter package depends on core and a curated set of integrations, ensuring a balanced, production-ready baseline. The core package exposes a broad surface area of indices, readers, prompts, storage, and settings, while integrations remain decoupled and replaceable.
 
 ```mermaid
-graph TB
-ST["llama-index (starter)"]
-CR["llama-index-core (core)"]
-OP["llama-index-llms-openai"]
-RP["llama-index-llms-replicate"]
-HF["llama-index-embeddings-huggingface"]
-FD["llama-index-readers-file"]
-LP["llama-index-readers-llama-parse"]
-ST --> CR
-ST --> OP
-ST --> RP
-ST --> HF
-ST --> FD
-ST --> LP
+graph LR
+ST["llama-index (starter)"] --> CORE["llama-index-core"]
+ST --> LLM["llama-index-llms-openai"]
+ST --> EMB["llama-index-embeddings-openai"]
+ST --> IDX["llama-index-indices-managed-llama-cloud"]
+ST --> RDR["llama-index-readers-file"]
+ST --> PRS["llama-index-readers-llama-parse"]
 ```
 
 **Diagram sources**
-- [pyproject.toml](file://pyproject.toml#L41-L50)
+- [pyproject.toml](file://pyproject.toml#L42-L49)
 
 **Section sources**
-- [pyproject.toml](file://pyproject.toml#L41-L50)
+- [pyproject.toml](file://pyproject.toml#L42-L49)
 
 ## Performance Considerations
-- Choose appropriate indices and retrieval strategies for your data scale and latency requirements
-- Persist indices and metadata to avoid repeated ingestion and indexing
-- Select embeddings and vector stores aligned with your performance and cost targets
-- Use routers and postprocessors judiciously to balance accuracy and speed
+- Choose appropriate indices and chunking strategies for your data scale and latency targets
+- Select lightweight tokenizers and efficient embeddings for cost and speed
+- Persist storage contexts to disk to avoid re-ingestion overhead
+- Use retrievers and rerankers judiciously to balance accuracy and latency
 
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
-Common issues and remedies:
-- Deprecated service context: migrate to settings-based configuration
-- Integration installation: ensure required integration packages are installed and importable
-- Persistence: confirm storage context persists and reloads correctly
+Common areas to review:
+- Settings and tokenization mismatches between LLM and tokenizer
+- Missing or misconfigured embedding models
+- Persistence and storage context paths
+- Integration availability and version compatibility
+
+Example paths:
+- Settings and configuration: [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L248)
+- Core initialization and exports: [llama-index-core/llama_index/core/__init__.py](file://llama-index-core/llama_index/core/__init__.py#L24-L87)
 
 **Section sources**
-- [llama_index\core\service_context.py](file://llama-index-core/llama_index/core/service_context.py#L4-L48)
+- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L248)
+- [llama-index-core/llama_index/core/__init__.py](file://llama-index-core/llama_index/core/__init__.py#L24-L87)
 
 ## Conclusion
-LlamaIndex is a data framework for LLM applications that enables retrieval-augmented generation with private data. It offers a dual path—starter for quick starts and customized for deep tailoring—while providing a modular architecture, rich ecosystem, and practical examples. Whether you are building a simple chatbot or a complex agent, LlamaIndex equips you to load, index, store, retrieve, and synthesize with confidence.
+LlamaIndex provides a robust, extensible foundation for building RAG and agent-driven applications. Its dual usage model (starter vs customized), plugin-based integrations, and reusable packs enable rapid prototyping and scalable production deployments. With over 300 integration packages and a rich ecosystem of examples and documentation, LlamaIndex fits developers ranging from beginners to enterprise teams seeking to connect LLMs to their data efficiently and reliably.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
 ## Appendices
-
-### Beginner 5-Line Usage Reference
-- Install the starter package
-- Load documents from a directory
-- Build a vector index from documents
-- Configure optional LLM and embeddings
-- Query the index with a query engine
+- Ecosystem overview and links: [README.md](file://README.md#L51-L54)
+- CLI usage for packs: [llama-index-packs/README.md](file://llama-index-packs/README.md#L18-L32)
 
 **Section sources**
-- [README.md](file://README.md#L105-L159)
-
-### Core Purpose and Capabilities Reference
-- Data connectors for ingestion
-- Structuring capabilities for indices and graphs
-- Retrieval interfaces and query engines
-- Integration flexibility with external frameworks
-
-**Section sources**
-- [README.md](file://README.md#L69-L74)
-- [llama-index-core\README.md](file://llama-index-core/README.md#L1-L11)
+- [README.md](file://README.md#L51-L54)
+- [llama-index-packs/README.md](file://llama-index-packs/README.md#L18-L32)

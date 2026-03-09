@@ -2,18 +2,18 @@
 
 <cite>
 **Referenced Files in This Document**
-- [README.md](file://README.md)
-- [pyproject.toml](file://pyproject.toml)
-- [llama_index-core/pyproject.toml](file://llama-index-core/pyproject.toml)
-- [llama_index-core/llama_index/core/__init__.py](file://llama-index-core/llama_index/core/__init__.py)
-- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py)
-- [llama-index-core/llama_index/core/service_context.py](file://llama-index-core/llama_index/core/service_context.py)
-- [llama-index-core/llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py)
-- [llama-index-core/llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py)
-- [llama-index-core/llama_index/core/retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py)
-- [llama-index-integrations/embeddings/llama-index-embeddings-openai/llama_index/embeddings/openai/__init__.py](file://llama-index-integrations/embeddings/llama-index-embeddings-openai/llama_index/embeddings/openai/__init__.py)
-- [llama-index-integrations/llms/llama-index-llms-openai/llama_index/llms/openai/__init__.py](file://llama-index-integrations/llms/llama-index-llms-openai/llama_index/llms/openai/__init__.py)
-- [llama-index-integrations/readers/llama-index-readers-file/llama_index/readers/file/__init__.py](file://llama-index-integrations/readers/llama-index-readers-file/llama_index/readers/file/__init__.py)
+- [llama_index/core/__init__.py](file://llama-index-core/llama_index/core/__init__.py)
+- [llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py)
+- [llama_index/core/service_context.py](file://llama-index-core/llama_index/core/service_context.py)
+- [llama_index/core/callbacks/base_handler.py](file://llama-index-core/llama_index/core/callbacks/base_handler.py)
+- [llama_index/core/callbacks/base.py](file://llama-index-core/llama_index/core/callbacks/base.py)
+- [llama_index/core/storage/storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py)
+- [llama_index/core/storage/docstore/types.py](file://llama-index-core/llama_index/core/storage/docstore/types.py)
+- [llama_index/core/storage/index_store/types.py](file://llama-index-core/llama_index/core/storage/index_store/types.py)
+- [llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py)
+- [llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py)
+- [llama_index/core/readers/__init__.py](file://llama-index-core/llama_index/core/readers/__init__.py)
+- [llama_index/core/response_synthesizers/factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py)
 </cite>
 
 ## Table of Contents
@@ -28,122 +28,130 @@
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document describes the architecture of the LlamaIndex framework with a focus on the modular monorepo design, the separation between the core framework, integration packages, and application layers, and how the Settings singleton coordinates global configuration across components. It also explains the dual package approach (llama-index vs llama-index-core), the namespace pattern for imports, and the plugin architecture that enables extensibility. The goal is to make the system understandable for both beginners and advanced users.
+This document presents a comprehensive architecture overview of LlamaIndex’s system design. It describes the layered architecture with a core framework layer, an integrations layer, and an application layer. It documents the plugin-based extensibility system, the component factory pattern, and the event-driven callback architecture. It explains the relationships among settings, indices, readers, and storage systems, and provides system context diagrams that show how components interact and data flows through the pipeline. Design patterns used include factory, strategy, observer, and builder. Finally, it addresses scalability considerations, modularity principles, and how the architecture supports both simple and complex use cases.
 
 ## Project Structure
-LlamaIndex is organized as a monorepo with:
-- Core framework under llama-index-core: foundational abstractions, indices, query engines, retrievers, and global configuration.
-- Integration packages under llama-index-integrations: vendor-specific implementations for LLMs, embeddings, readers, vector stores, and more.
-- Application layer: user code that composes core and selected integrations to build RAG pipelines.
+LlamaIndex is organized around a core Python package that exposes top-level imports and orchestrates subsystems for indices, readers, storage, callbacks, and query engines. The core package aggregates indices, readers, storage contexts, settings, and response synthesizers, enabling a layered approach where higher-level application logic composes lower-level building blocks.
 
-Key characteristics:
-- Namespaced imports: imports containing core refer to the core package; imports without core refer to integration packages.
-- Dual package strategy: a “starter” distribution (llama-index) bundles core plus selected integrations; a “core-only” distribution (llama-index-core) lets users pick and choose integrations.
+```mermaid
+graph TB
+subgraph "Core Framework Layer"
+CORE_INIT["llama_index/core/__init__.py"]
+SETTINGS["llama_index/core/settings.py"]
+SERVICE_CONTEXT["llama_index/core/service_context.py"]
+CALLBACKS["llama_index/core/callbacks/base.py"]
+STORAGE_CTX["llama_index/core/storage/storage_context.py"]
+end
+subgraph "Integrations Layer"
+INDICES["llama_index/core/indices/__init__.py"]
+READERS["llama_index/core/readers/__init__.py"]
+QUERY_ENGINES["llama_index/core/query_engine/__init__.py"]
+RESPONSE_FACTORY["llama_index/core/response_synthesizers/factory.py"]
+end
+subgraph "Application Layer"
+APP["Application code"]
+end
+CORE_INIT --> SETTINGS
+CORE_INIT --> SERVICE_CONTEXT
+CORE_INIT --> CALLBACKS
+CORE_INIT --> STORAGE_CTX
+CORE_INIT --> INDICES
+CORE_INIT --> READERS
+CORE_INIT --> QUERY_ENGINES
+CORE_INIT --> RESPONSE_FACTORY
+INDICES --> STORAGE_CTX
+READERS --> STORAGE_CTX
+QUERY_ENGINES --> STORAGE_CTX
+RESPONSE_FACTORY --> SETTINGS
+CALLBACKS --> SETTINGS
+```
+
+**Diagram sources**
+- [llama_index/core/__init__.py](file://llama-index-core/llama_index/core/__init__.py#L1-L162)
+- [llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L1-L249)
+- [llama_index/core/service_context.py](file://llama-index-core/llama_index/core/service_context.py#L1-L49)
+- [llama_index/core/callbacks/base.py](file://llama-index-core/llama_index/core/callbacks/base.py#L1-L303)
+- [llama_index/core/storage/storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L1-L278)
+- [llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
+- [llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
+- [llama_index/core/readers/__init__.py](file://llama-index-core/llama_index/core/readers/__init__.py#L1-L33)
+- [llama_index/core/response_synthesizers/factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L1-L152)
+
+**Section sources**
+- [llama_index/core/__init__.py](file://llama-index-core/llama_index/core/__init__.py#L1-L162)
+
+## Core Components
+- Settings: Centralized configuration provider with lazy initialization for LLM, embeddings, callback manager, tokenizer, node parser, prompt helper, and transformations. It integrates with the callback manager and prompt helper to propagate configuration downstream.
+- StorageContext: Aggregates document store, index store, vector stores (including image store), graph store, and property graph store. Provides persistence and convenience constructors for default and namespaced vector stores.
+- Indices: A broad set of index types (keyword table, tree, vector store, knowledge graph, property graph, etc.) exposed via the indices package init.
+- Readers: Data connectors that produce Document objects, including directory reader and downloadable loaders.
+- Query Engines: A variety of query engines (retriever-based, router-based, multi-step, knowledge graph, SQL, multimodal) exposed via the query engine package init.
+- Response Synthesizers: Factory that constructs synthesizers based on response modes and templates, integrating with Settings for LLM and prompt helper.
+- Callback Manager: Event-driven observer system that tracks trace stacks, emits start/end events, and coordinates handler lifecycles.
+
+**Section sources**
+- [llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L1-L249)
+- [llama_index/core/storage/storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L1-L278)
+- [llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
+- [llama_index/core/readers/__init__.py](file://llama-index-core/llama_index/core/readers/__init__.py#L1-L33)
+- [llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
+- [llama_index/core/response_synthesizers/factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L1-L152)
+- [llama_index/core/callbacks/base.py](file://llama-index-core/llama_index/core/callbacks/base.py#L1-L303)
+
+## Architecture Overview
+LlamaIndex follows a layered architecture:
+- Core Framework Layer: Provides foundational services (Settings, StorageContext, CallbackManager).
+- Integrations Layer: Exposes indices, readers, query engines, and response synthesizers as pluggable components.
+- Application Layer: Composes components to build end-to-end pipelines for ingestion and querying.
+
+The system emphasizes modularity and extensibility:
+- Plugin-based extensibility: Users can supply custom LLMs, embeddings, node parsers, and vector stores; Settings resolves them lazily.
+- Component factory pattern: Response synthesizer factory selects implementations based on response mode and templates.
+- Event-driven callback architecture: CallbackManager observes lifecycle events across operations, enabling tracing and instrumentation.
 
 ```mermaid
 graph TB
 subgraph "Application Layer"
-App["User Application Code"]
+APP["Application"]
 end
-subgraph "Integration Packages"
-IntLLM["llama-index-llms-openai"]
-IntEmb["llama-index-embeddings-openai"]
-IntRead["llama-index-readers-file"]
+subgraph "Integrations Layer"
+READERS["Readers"]
+INDICES["Indices"]
+QUERY_ENGINES["Query Engines"]
+RESPONSE_FACTORY["Response Synthesizer Factory"]
 end
-subgraph "Core Framework"
-CoreInit["llama_index.core.__init__"]
-Settings["Settings (singleton)"]
-Indices["Indices"]
-QEngines["Query Engines"]
-Retrievers["Retrievers"]
+subgraph "Core Framework Layer"
+SETTINGS["Settings"]
+STORAGE_CTX["StorageContext"]
+CALLBACKS["CallbackManager"]
 end
-App --> CoreInit
-App --> Settings
-App --> Indices
-App --> QEngines
-App --> Retrievers
-QEngines --> Retrievers
-Indices --> QEngines
-Settings --> QEngines
-Settings --> Indices
-Settings --> Retrievers
-QEngines --> IntLLM
-Settings --> IntEmb
-Indices --> IntRead
+APP --> READERS
+APP --> INDICES
+APP --> QUERY_ENGINES
+APP --> RESPONSE_FACTORY
+READERS --> STORAGE_CTX
+INDICES --> STORAGE_CTX
+QUERY_ENGINES --> STORAGE_CTX
+RESPONSE_FACTORY --> SETTINGS
+CALLBACKS --> SETTINGS
 ```
 
 **Diagram sources**
-- [llama_index-core/llama_index/core/__init__.py](file://llama-index-core/llama_index/core/__init__.py#L1-L162)
-- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L1-L249)
-- [llama-index-core/llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
-- [llama-index-core/llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
-- [llama-index-core/llama_index/core/retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py#L1-L89)
-- [llama-index-integrations/llms/llama-index-llms-openai/llama_index/llms/openai/__init__.py](file://llama-index-integrations/llms/llama-index-llms-openai/llama_index/llms/openai/__init__.py#L1-L5)
-- [llama-index-integrations/embeddings/llama-index-embeddings-openai/llama_index/embeddings/openai/__init__.py](file://llama-index-integrations/embeddings/llama-index-embeddings-openai/llama_index/embeddings/openai/__init__.py#L1-L14)
-- [llama-index-integrations/readers/llama-index-readers-file/llama_index/readers/file/__init__.py](file://llama-index-integrations/readers/llama-index-readers-file/llama_index/readers/file/__init__.py#L1-L50)
-
-**Section sources**
-- [README.md](file://README.md#L11-L35)
-- [pyproject.toml](file://pyproject.toml#L42-L50)
-- [llama-index-core/pyproject.toml](file://llama-index-core/pyproject.toml#L34-L84)
-
-## Core Components
-- Global configuration: Settings singleton encapsulates LLM, embedding model, callback manager, tokenizer, node parser, prompt helper, and transformations. It lazily resolves defaults and propagates callback manager to dependent components.
-- Indices: A broad set of index types (keyword, tree, vector, knowledge graph, property graph, etc.) exposed via core indices module.
-- Query engines: High-level orchestration around retrievers and indices, including router, multi-step, knowledge graph, SQL, and multimodal query engines.
-- Retrievers: Pluggable retrieval strategies (vector, keyword, recursive, auto-merging, fusion, etc.) that feed query engines.
-
-These components are designed to be composable: applications configure Settings once, then construct indices and query engines that internally use the configured components.
-
-**Section sources**
-- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L249)
-- [llama-index-core/llama_index/core/__init__.py](file://llama-index-core/llama_index/core/__init__.py#L17-L88)
-- [llama-index-core/llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
-- [llama-index-core/llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
-- [llama-index-core/llama_index/core/retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py#L1-L89)
-
-## Architecture Overview
-The architecture centers on a global Settings singleton that standardizes configuration across the framework. Applications import from core for foundational types and from integration packages for vendor-specific implementations. The data flow typically follows:
-- Data ingestion via readers → node parsing and transformations → indexing → retrieval → query engine orchestration → response synthesis.
-
-```mermaid
-graph TB
-Reader["Readers (integration)"] --> Parser["Node Parser (Settings.node_parser)"]
-Parser --> Index["Indices (core)"]
-Index --> Retriever["Retrievers (core)"]
-Retriever --> QEngine["Query Engines (core)"]
-QEngine --> LLM["LLM (Settings.llm)"]
-QEngine --> Embed["Embeddings (Settings.embed_model)"]
-Settings["Settings (singleton)"] --> LLM
-Settings --> Embed
-Settings --> Parser
-Settings --> Retriever
-Settings --> QEngine
-```
-
-**Diagram sources**
-- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L32-L74)
-- [llama-index-core/llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
-- [llama-index-core/llama_index/core/retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py#L1-L89)
-- [llama-index-core/llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
-- [llama-index-integrations/readers/llama-index-readers-file/llama_index/readers/file/__init__.py](file://llama-index-integrations/readers/llama-index-readers-file/llama_index/readers/file/__init__.py#L1-L50)
+- [llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L1-L249)
+- [llama_index/core/storage/storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L1-L278)
+- [llama_index/core/callbacks/base.py](file://llama-index-core/llama_index/core/callbacks/base.py#L1-L303)
+- [llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
+- [llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
+- [llama_index/core/readers/__init__.py](file://llama-index-core/llama_index/core/readers/__init__.py#L1-L33)
+- [llama_index/core/response_synthesizers/factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L1-L152)
 
 ## Detailed Component Analysis
 
-### Settings Singleton Pattern
-Settings is a singleton dataclass that lazily initializes and exposes:
-- LLM and pydantic program mode
-- Embedding model
-- Callback manager
-- Tokenizer
-- Node parser and aliases (node_parser/text_splitter)
-- Prompt helper and derived context window/num_output
-- Transformations list (defaults to [node_parser])
-
-Behavior highlights:
-- Lazy resolution: components are resolved on first access.
-- Callback propagation: callback manager is attached to LLM and node parser when present.
-- Compatibility: maintains backward-compatible globals for tokenizer and callback handler.
+### Settings and Global Configuration
+Settings centralizes configuration resolution and propagation:
+- Lazy initialization ensures resources (LLM, embeddings, callback manager, tokenizer, node parser, prompt helper) are created only when accessed.
+- Properties expose resolved instances and integrate with downstream components (e.g., callback manager propagation).
+- Provides aliases for related configuration (e.g., text_splitter for node parser).
 
 ```mermaid
 classDiagram
@@ -155,9 +163,10 @@ class Settings {
 +node_parser
 +text_splitter
 +prompt_helper
-+context_window
-+num_output
 +transformations
++pydantic_program_mode
++num_output
++context_window
 }
 class LLM {
 }
@@ -169,166 +178,231 @@ class NodeParser {
 }
 class PromptHelper {
 }
-Settings --> LLM : "resolve_llm()"
-Settings --> BaseEmbedding : "resolve_embed_model()"
-Settings --> CallbackManager : "propagate to LLM and node_parser"
-Settings --> NodeParser : "SentenceSplitter default"
-Settings --> PromptHelper : "from_llm_metadata()"
+Settings --> LLM : "resolves"
+Settings --> BaseEmbedding : "resolves"
+Settings --> CallbackManager : "propagates"
+Settings --> NodeParser : "resolves"
+Settings --> PromptHelper : "resolves"
 ```
 
 **Diagram sources**
-- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L249)
+- [llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L1-L249)
 
 **Section sources**
-- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L249)
-- [llama-index-core/llama_index/core/service_context.py](file://llama-index-core/llama_index/core/service_context.py#L1-L49)
+- [llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L1-L249)
 
-### Data Processing Pipeline
-The pipeline integrates readers, parsers, and indices:
-- Readers (integration): load diverse data formats.
-- Node parser (Settings.node_parser): splits text into nodes.
-- Indices (core): store and organize nodes for retrieval.
+### StorageContext and Persistence
+StorageContext aggregates storage backends and provides:
+- Default construction with in-memory stores or persistent stores from a directory.
+- Namespaced vector stores for multiple namespaces (e.g., images).
+- Persist and restore routines for docstore, index store, graph store, property graph store, and vector stores.
+
+```mermaid
+classDiagram
+class StorageContext {
++docstore
++index_store
++vector_stores
++graph_store
++property_graph_store
++from_defaults(...)
++persist(...)
++to_dict()
++from_dict(...)
++vector_store
++add_vector_store(...)
+}
+class BaseDocumentStore {
+}
+class BaseIndexStore {
+}
+class BasePydanticVectorStore {
+}
+class GraphStore {
+}
+class PropertyGraphStore {
+}
+StorageContext --> BaseDocumentStore
+StorageContext --> BaseIndexStore
+StorageContext --> BasePydanticVectorStore
+StorageContext --> GraphStore
+StorageContext --> PropertyGraphStore
+```
+
+**Diagram sources**
+- [llama_index/core/storage/storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L1-L278)
+- [llama_index/core/storage/docstore/types.py](file://llama-index-core/llama_index/core/storage/docstore/types.py#L1-L273)
+- [llama_index/core/storage/index_store/types.py](file://llama-index-core/llama_index/core/storage/index_store/types.py#L1-L56)
+
+**Section sources**
+- [llama_index/core/storage/storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L1-L278)
+- [llama_index/core/storage/docstore/types.py](file://llama-index-core/llama_index/core/storage/docstore/types.py#L1-L273)
+- [llama_index/core/storage/index_store/types.py](file://llama-index-core/llama_index/core/storage/index_store/types.py#L1-L56)
+
+### Callback Manager and Event-Driven Architecture
+The callback system implements an observer pattern:
+- BaseCallbackHandler defines the contract for event start/end and trace lifecycle.
+- CallbackManager manages handlers, maintains trace stacks, and coordinates event emission.
+- EventContext wraps per-event lifecycle for convenient start/end usage.
+
+```mermaid
+classDiagram
+class BaseCallbackHandler {
+<<abstract>>
++on_event_start(...)
++on_event_end(...)
++start_trace(...)
++end_trace(...)
+}
+class CallbackManager {
++handlers
++on_event_start(...)
++on_event_end(...)
++add_handler(...)
++remove_handler(...)
++set_handlers(...)
++event(...)
++as_trace(...)
++start_trace(...)
++end_trace(...)
++trace_map
+}
+class EventContext {
++on_start(...)
++on_end(...)
+}
+CallbackManager --> BaseCallbackHandler : "manages"
+EventContext --> CallbackManager : "uses"
+```
+
+**Diagram sources**
+- [llama_index/core/callbacks/base_handler.py](file://llama-index-core/llama_index/core/callbacks/base_handler.py#L1-L56)
+- [llama_index/core/callbacks/base.py](file://llama-index-core/llama_index/core/callbacks/base.py#L1-L303)
+
+**Section sources**
+- [llama_index/core/callbacks/base_handler.py](file://llama-index-core/llama_index/core/callbacks/base_handler.py#L1-L56)
+- [llama_index/core/callbacks/base.py](file://llama-index-core/llama_index/core/callbacks/base.py#L1-L303)
+
+### Response Synthesizer Factory Pattern
+The response synthesizer factory demonstrates a factory pattern:
+- Selects synthesizer implementations based on response mode and templates.
+- Resolves LLM and prompt helper from Settings when not provided.
+- Supports streaming, async, and structured output configurations.
 
 ```mermaid
 flowchart TD
-Start(["Start"]) --> Load["Load Documents (Readers)"]
-Load --> Parse["Parse & Transform (Node Parser)"]
-Parse --> Index["Build Index (Indices)"]
-Index --> Persist["Persist to Storage"]
-Persist --> End(["Ready"])
+Start(["Call get_response_synthesizer"]) --> ResolveLLM["Resolve LLM from Settings"]
+ResolveLLM --> ResolvePromptHelper["Resolve PromptHelper from Settings"]
+ResolvePromptHelper --> ChooseMode{"ResponseMode"}
+ChooseMode --> |REFINE| BuildRefine["Build Refine"]
+ChooseMode --> |COMPACT| BuildCompact["Build CompactAndRefine"]
+ChooseMode --> |TREE_SUMMARIZE| BuildTree["Build TreeSummarize"]
+ChooseMode --> |SIMPLE_SUMMARIZE| BuildSimple["Build SimpleSummarize"]
+ChooseMode --> |GENERATION| BuildGeneration["Build Generation"]
+ChooseMode --> |ACCUMULATE| BuildAccumulate["Build Accumulate"]
+ChooseMode --> |COMPACT_ACCUMULATE| BuildCompactAcc["Build CompactAndAccumulate"]
+ChooseMode --> |NO_TEXT| BuildNoText["Build NoText"]
+ChooseMode --> |CONTEXT_ONLY| BuildContextOnly["Build ContextOnly"]
+BuildRefine --> Return(["Return BaseSynthesizer"])
+BuildCompact --> Return
+BuildTree --> Return
+BuildSimple --> Return
+BuildGeneration --> Return
+BuildAccumulate --> Return
+BuildCompactAcc --> Return
+BuildNoText --> Return
+BuildContextOnly --> Return
 ```
 
 **Diagram sources**
-- [llama-index-integrations/readers/llama-index-readers-file/llama_index/readers/file/__init__.py](file://llama-index-integrations/readers/llama-index-readers-file/llama_index/readers/file/__init__.py#L1-L50)
-- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L137-L151)
-- [llama-index-core/llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
+- [llama_index/core/response_synthesizers/factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L1-L152)
 
 **Section sources**
-- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L137-L151)
-- [llama-index-core/llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
-- [llama-index-integrations/readers/llama-index-readers-file/llama_index/readers/file/__init__.py](file://llama-index-integrations/readers/llama-index-readers-file/llama_index/readers/file/__init__.py#L1-L50)
+- [llama_index/core/response_synthesizers/factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L1-L152)
 
-### Indexing Systems
-Core indices expose a wide variety of index types:
-- Keyword-based, tree-based, vector-based, document summary, knowledge graph, property graph, SQL struct store, and more.
-
-Applications select an index type appropriate to their data and retrieval needs. Indices are persisted and reloaded via storage contexts.
-
-**Section sources**
-- [llama-index-core/llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
-- [llama-index-core/llama_index/core/__init__.py](file://llama-index-core/llama_index/core/__init__.py#L24-L48)
-
-### Retrieval Engines
-Retrievers implement different strategies:
-- Vector retrievers, keyword retrievers, recursive, auto-merging, fusion, router, and SQL retrievers.
-
-They are consumed by query engines to fetch relevant context for answers.
-
-**Section sources**
-- [llama-index-core/llama_index/core/retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py#L1-L89)
-- [llama-index-core/llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
-
-### Query Processing
-Query engines orchestrate retrieval and synthesis:
-- Router engines, multi-step engines, knowledge graph engines, SQL engines, and multimodal engines.
-- They rely on Settings for LLM and embeddings and on retrievers for candidate selection.
+### Indices, Readers, and Query Engines
+- Indices: A wide range of index types are exposed via the indices package init, enabling different indexing strategies.
+- Readers: Data connectors produce Documents for ingestion.
+- Query Engines: A rich set of engines enable retrieval, routing, composition, and specialized queries.
 
 ```mermaid
-sequenceDiagram
-participant App as "Application"
-participant QE as "Query Engine"
-participant Ret as "Retriever"
-participant Ind as "Index"
-participant Set as "Settings"
-participant LLM as "LLM"
-App->>QE : "query(question)"
-QE->>Set : "retrieve LLM and callback_manager"
-QE->>Ret : "retrieve(query)"
-Ret->>Ind : "fetch candidates"
-Ind-->>Ret : "nodes"
-Ret-->>QE : "nodes"
-QE->>LLM : "generate answer"
-LLM-->>QE : "response"
-QE-->>App : "final answer"
+graph LR
+READERS["Readers"] --> STORAGE["StorageContext"]
+STORAGE --> INDICES["Indices"]
+INDICES --> QUERY_ENGINES["Query Engines"]
+QUERY_ENGINES --> RESPONSE["Response Synthesizer"]
 ```
 
 **Diagram sources**
-- [llama-index-core/llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
-- [llama-index-core/llama_index/core/retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py#L1-L89)
-- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L32-L74)
+- [llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
+- [llama_index/core/readers/__init__.py](file://llama-index-core/llama_index/core/readers/__init__.py#L1-L33)
+- [llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
+- [llama_index/core/storage/storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L1-L278)
 
 **Section sources**
-- [llama-index-core/llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
-- [llama-index-core/llama_index/core/retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py#L1-L89)
-- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L32-L74)
-
-### Plugin Architecture and Integration Packages
-Integrations plug into the core via well-defined interfaces:
-- LLMs: OpenAI integration exports OpenAI, AsyncOpenAI, SyncOpenAI, Tokenizer.
-- Embeddings: OpenAI embeddings integration exports OpenAIEmbedding and related types.
-- Readers: File reader integration exports many document loaders.
-
-Applications import from integration namespaces to configure Settings or construct components.
-
-**Section sources**
-- [llama-index-integrations/llms/llama-index-llms-openai/llama_index/llms/openai/__init__.py](file://llama-index-integrations/llms/llama-index-llms-openai/llama_index/llms/openai/__init__.py#L1-L5)
-- [llama-index-integrations/embeddings/llama-index-embeddings-openai/llama_index/embeddings/openai/__init__.py](file://llama-index-integrations/embeddings/llama-index-embeddings-openai/llama_index/embeddings/openai/__init__.py#L1-L14)
-- [llama-index-integrations/readers/llama-index-readers-file/llama_index/readers/file/__init__.py](file://llama-index-integrations/readers/llama-index-readers-file/llama_index/readers/file/__init__.py#L1-L50)
-
-### Dual Package Approach and Namespace Pattern
-- Dual packages:
-  - llama-index: starter package bundling core and selected integrations.
-  - llama-index-core: core-only package for customized setups.
-- Namespace pattern:
-  - Imports with core imply core package usage.
-  - Imports without core imply integration packages.
-
-This design simplifies onboarding (one install) while enabling advanced users to mix-and-match integrations.
-
-**Section sources**
-- [README.md](file://README.md#L11-L35)
-- [pyproject.toml](file://pyproject.toml#L42-L50)
-- [llama-index-core/pyproject.toml](file://llama-index-core/pyproject.toml#L34-L84)
+- [llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
+- [llama_index/core/readers/__init__.py](file://llama-index-core/llama_index/core/readers/__init__.py#L1-L33)
+- [llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
 
 ## Dependency Analysis
-High-level dependencies:
-- Core depends on internal abstractions and utilities.
-- Integrations depend on core interfaces and resolve components via Settings.
-- The top-level llama-index package depends on llama-index-core and several integrations.
+- Settings depends on LLM resolution, embedding resolution, callback manager, tokenizer, node parser, and prompt helper. It propagates callback manager to downstream components.
+- StorageContext aggregates multiple storage backends and supports persistence and restoration.
+- CallbackManager depends on BaseCallbackHandler and maintains trace stacks and trace maps.
+- Response Synthesizer Factory depends on Settings for LLM and prompt helper resolution.
+- Indices, Readers, and Query Engines depend on StorageContext for persistence and retrieval.
 
 ```mermaid
 graph TB
-LlamaIndex["Package: llama-index"] --> Core["Package: llama-index-core"]
-LlamaIndex --> IntLLM["Integration: llama-index-llms-openai"]
-LlamaIndex --> IntEmb["Integration: llama-index-embeddings-openai"]
-LlamaIndex --> IntRead["Integration: llama-index-readers-file"]
+SETTINGS["Settings"] --> LLM_RES["LLM Resolution"]
+SETTINGS --> EMB_RES["Embedding Resolution"]
+SETTINGS --> CB_MGR["CallbackManager"]
+SETTINGS --> NODE_PARSER["NodeParser"]
+SETTINGS --> PROMPT_HELPER["PromptHelper"]
+STORAGE_CTX["StorageContext"] --> DOCSTORE["BaseDocumentStore"]
+STORAGE_CTX --> IDXSTORE["BaseIndexStore"]
+STORAGE_CTX --> VSTORES["BasePydanticVectorStore*"]
+STORAGE_CTX --> GRAPHSTORE["GraphStore"]
+STORAGE_CTX --> PGRAPHSTORE["PropertyGraphStore"]
+CALLBACKS["CallbackManager"] --> BASE_HANDLER["BaseCallbackHandler"]
+RESPONSE_FACTORY["Response Synthesizer Factory"] --> SETTINGS
+QUERY_ENGINES["Query Engines"] --> STORAGE_CTX
+INDICES["Indices"] --> STORAGE_CTX
+READERS["Readers"] --> STORAGE_CTX
 ```
 
 **Diagram sources**
-- [pyproject.toml](file://pyproject.toml#L42-L50)
-- [llama-index-core/pyproject.toml](file://llama-index-core/pyproject.toml#L34-L84)
+- [llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L1-L249)
+- [llama_index/core/storage/storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L1-L278)
+- [llama_index/core/callbacks/base.py](file://llama-index-core/llama_index/core/callbacks/base.py#L1-L303)
+- [llama_index/core/response_synthesizers/factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L1-L152)
+- [llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
+- [llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
+- [llama_index/core/readers/__init__.py](file://llama-index-core/llama_index/core/readers/__init__.py#L1-L33)
 
 **Section sources**
-- [pyproject.toml](file://pyproject.toml#L42-L50)
-- [llama-index-core/pyproject.toml](file://llama-index-core/pyproject.toml#L34-L84)
+- [llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L1-L249)
+- [llama_index/core/storage/storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L1-L278)
+- [llama_index/core/callbacks/base.py](file://llama-index-core/llama_index/core/callbacks/base.py#L1-L303)
+- [llama_index/core/response_synthesizers/factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L1-L152)
+- [llama_index/core/indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
+- [llama_index/core/query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
+- [llama_index/core/readers/__init__.py](file://llama-index-core/llama_index/core/readers/__init__.py#L1-L33)
 
 ## Performance Considerations
-- Lazy initialization in Settings avoids unnecessary overhead until components are accessed.
-- Callback manager propagation ensures consistent telemetry and tracing across LLM and node parser.
-- Choosing appropriate indices and retrievers impacts retrieval speed and accuracy.
-- Tokenizer alignment with the LLM helps avoid context truncation issues.
-
-[No sources needed since this section provides general guidance]
+- Lazy initialization in Settings reduces startup overhead by deferring resource creation until needed.
+- Namespaced vector stores in StorageContext enable efficient multi-modal or multi-domain retrieval without cross-contamination.
+- CallbackManager’s trace stack and trace map minimize contention in concurrent environments by copying context variables per operation.
+- Batch APIs in storage backends (e.g., BaseDocumentStore, BaseIndexStore) support bulk operations to reduce I/O overhead.
+- Streaming and async options in response synthesizers enable scalable generation pipelines.
 
 ## Troubleshooting Guide
-Common issues and resolutions:
-- Deprecated ServiceContext: Use Settings instead; the old class raises explicit errors guiding migration.
-- Missing or mismatched tokenizer: Align Settings.tokenizer with the selected LLM’s expected tokenizer.
-- Chunk size/overlap misconfiguration: Use Settings.chunk_size and Settings.chunk_overlap to tune node parser behavior.
+- ServiceContext deprecation: The legacy ServiceContext is deprecated in favor of Settings and local module injection. Migrate by using Settings or passing modules directly to interfaces.
+- Handler uniqueness: CallbackManager enforces unique handler types to avoid ambiguous event handling; ensure distinct handler classes are registered.
+- Trace lifecycle: Use EventContext or CallbackManager’s event/as_trace context managers to guarantee proper event start/end pairing and trace completion.
 
 **Section sources**
-- [llama-index-core/llama_index/core/service_context.py](file://llama-index-core/llama_index/core/service_context.py#L13-L48)
-- [llama-index-core/llama_index/core/settings.py](file://llama-index-core/llama_index/core/settings.py#L154-L183)
+- [llama_index/core/service_context.py](file://llama-index-core/llama_index/core/service_context.py#L1-L49)
+- [llama_index/core/callbacks/base.py](file://llama-index-core/llama_index/core/callbacks/base.py#L1-L303)
 
 ## Conclusion
-LlamaIndex’s architecture balances simplicity and flexibility. The core framework provides robust, composable building blocks, while the Settings singleton centralizes configuration. The dual package approach and namespace pattern enable both quick starts and precise customization. Integration packages plug seamlessly into the core via well-defined interfaces, supporting a rich ecosystem of vendors and providers.
+LlamaIndex’s architecture balances modularity and extensibility through a layered design. The Settings singleton provides centralized configuration with lazy initialization, while StorageContext aggregates storage backends and offers persistence. The callback system enables event-driven tracing and instrumentation. The response synthesizer factory and the broad sets of indices, readers, and query engines form a flexible integrations layer that supports simple and complex use cases. Together, these patterns deliver scalability, maintainability, and a robust foundation for building retrieval-augmented applications.

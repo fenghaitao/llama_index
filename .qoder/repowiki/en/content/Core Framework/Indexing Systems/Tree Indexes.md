@@ -3,17 +3,18 @@
 <cite>
 **Referenced Files in This Document**
 - [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py)
-- [inserter.py](file://llama-index-core/llama_index/core/indices/tree/inserter.py)
-- [utils.py](file://llama-index-core/llama_index/core/indices/tree/utils.py)
+- [__init__.py](file://llama-index-core/llama_index/core/indices/tree/__init__.py)
 - [README.md](file://llama-index-core/llama_index/core/indices/tree/README.md)
-- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py)
-- [data_structs.py](file://llama-index-core/llama_index/core/data_structs/data_structs.py)
-- [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py)
+- [utils.py](file://llama-index-core/llama_index/core/indices/tree/utils.py)
+- [inserter.py](file://llama-index-core/llama_index/core/indices/tree/inserter.py)
 - [all_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/all_leaf_retriever.py)
+- [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py)
+- [select_leaf_embedding_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_embedding_retriever.py)
 - [tree_root_retriever.py](file://llama-index-core/llama_index/core/indices/tree/tree_root_retriever.py)
-- [tree_summarize.py](file://llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py)
+- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py)
 - [test_index.py](file://llama-index-core/tests/indices/tree/test_index.py)
-- [test_retrievers.py](file://llama-index-core/tests/indices/tree/test_retrievers.py)
+- [tree_summarize.py](file://llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py)
+- [test_tree_summarize.py](file://llama-index-core/tests/indices/response/test_tree_summarize.py)
 </cite>
 
 ## Table of Contents
@@ -29,462 +30,356 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-Tree Indexes in LlamaIndex organize hierarchical knowledge into a tree-structured index, enabling efficient multi-level summarization and retrieval. The index is built bottom-up: leaf nodes represent original chunks, and internal nodes summarize their children. At query time, the index supports:
-- Recursive selection via a leaf retriever that chooses promising branches based on LLM prompts
-- Root-based retrieval that synthesizes answers directly from root nodes
-- All-leaf retrieval that aggregates leaf nodes for synthesis
-- Embedding-based selection for hybrid retrieval strategies
-
-This document explains the TreeIndex implementation, tree construction algorithms, parent-child relationships, and recursive retrieval patterns. It also covers practical configuration, memory management, and advanced topics such as dynamic updates and integration with other index types.
+Tree Indexes in LlamaIndex organize hierarchical document collections into a tree-structured index. Each internal node summarizes its children, enabling efficient recursive retrieval and multi-level aggregation. This document explains the hierarchical tree structure, recursive decomposition, and multi-level aggregation patterns implemented by the TreeIndex class and related components. It also covers tree construction algorithms, leaf/root node management, configuration of tree depths, recursive retrieval strategies, optimization techniques, and practical examples for combining tree structures with other indexing strategies.
 
 ## Project Structure
-The Tree Index implementation spans several modules:
-- Tree index core and builders
-- Retriever implementations for different query modes
-- Utilities for prompt formatting and numbering
-- Data structures for the index graph
-- Response synthesizers for tree-based summarization
+The Tree Index implementation resides primarily under the indices/tree module and leverages shared tree-building utilities. Key files include the index class, retrievers, insertion logic, and helper utilities.
 
 ```mermaid
 graph TB
-subgraph "Tree Index Core"
-TI["TreeIndex<br/>(base.py)"]
-GB["GPTTreeIndexBuilder<br/>(common_tree/base.py)"]
-INS["TreeIndexInserter<br/>(tree/inserter.py)"]
-UT["get_numbered_text_from_nodes<br/>(tree/utils.py)"]
+subgraph "Tree Index Module"
+TIBase["indices/tree/base.py"]
+TIInit["indices/tree/__init__.py"]
+TIReadme["indices/tree/README.md"]
+TIUtils["indices/tree/utils.py"]
+TIInserter["indices/tree/inserter.py"]
+TIAllLeaf["indices/tree/all_leaf_retriever.py"]
+TISelLeaf["indices/tree/select_leaf_retriever.py"]
+TISelEmb["indices/tree/select_leaf_embedding_retriever.py"]
+TIRoot["indices/tree/tree_root_retriever.py"]
 end
-subgraph "Retrievers"
-SLR["TreeSelectLeafRetriever<br/>(tree/select_leaf_retriever.py)"]
-ALR["TreeAllLeafRetriever<br/>(tree/all_leaf_retriever.py)"]
-RRR["TreeRootRetriever<br/>(tree/tree_root_retriever.py)"]
+subgraph "Common Tree Builder"
+CTBase["indices/common_tree/base.py"]
 end
-subgraph "Data & Synthesis"
-IG["IndexGraph<br/>(data_structs/data_structs.py)"]
-TS["TreeSummarize<br/>(response_synthesizers/tree_summarize.py)"]
+subgraph "Response Synthesis"
+RS["response_synthesizers/tree_summarize.py"]
 end
-TI --> GB
-TI --> INS
-TI --> IG
-SLR --> TI
-ALR --> TI
-RRR --> TI
-SLR --> UT
-ALR --> IG
-RRR --> IG
-GB --> IG
-INS --> IG
-TS --> IG
+TIBase --> CTBase
+TIBase --> TIInserter
+TIBase --> TIAllLeaf
+TIBase --> TISelLeaf
+TIBase --> TISelEmb
+TIBase --> TIRoot
+TISelLeaf --> TIUtils
+TISelEmb --> TISelLeaf
+TIBase -. uses .-> RS
 ```
 
 **Diagram sources**
-- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L39-L190)
+- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L39-L191)
+- [__init__.py](file://llama-index-core/llama_index/core/indices/tree/__init__.py#L1-L23)
+- [README.md](file://llama-index-core/llama_index/core/indices/tree/README.md#L1-L51)
+- [utils.py](file://llama-index-core/llama_index/core/indices/tree/utils.py#L1-L28)
+- [inserter.py](file://llama-index-core/llama_index/core/indices/tree/inserter.py#L1-L181)
+- [all_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/all_leaf_retriever.py#L1-L57)
+- [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py#L1-L429)
+- [select_leaf_embedding_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_embedding_retriever.py#L1-L159)
+- [tree_root_retriever.py](file://llama-index-core/llama_index/core/indices/tree/tree_root_retriever.py)
 - [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L23-L242)
-- [inserter.py](file://llama-index-core/llama_index/core/indices/tree/inserter.py#L24-L181)
-- [utils.py](file://llama-index-core/llama_index/core/indices/tree/utils.py#L8-L28)
-- [data_structs.py](file://llama-index-core/llama_index/core/data_structs/data_structs.py#L41-L112)
-- [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py#L56-L429)
-- [all_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/all_leaf_retriever.py#L18-L57)
-- [tree_root_retriever.py](file://llama-index-core/llama_index/core/indices/tree/tree_root_retriever.py#L16-L51)
-- [tree_summarize.py](file://llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py#L17-L231)
+- [tree_summarize.py](file://llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py)
 
 **Section sources**
-- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L39-L190)
-- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L23-L242)
-- [data_structs.py](file://llama-index-core/llama_index/core/data_structs/data_structs.py#L41-L112)
+- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L1-L191)
+- [__init__.py](file://llama-index-core/llama_index/core/indices/tree/__init__.py#L1-L23)
+- [README.md](file://llama-index-core/llama_index/core/indices/tree/README.md#L1-L51)
 
 ## Core Components
-- TreeIndex: The primary index class that manages index construction, insertion, and exposes retrievers for different query modes.
-- GPTTreeIndexBuilder: Bottom-up builder that consolidates nodes into parents using a summarization prompt, recursively until reaching root nodes.
-- TreeIndexInserter: Handles incremental insertion of new nodes, including parent selection and consolidation when a parent exceeds the configured number of children.
-- IndexGraph: The underlying graph data structure storing nodes, root nodes, and parent-child relationships.
+- TreeIndex: The primary index class that constructs a hierarchical tree bottom-up, manages node insertion, and exposes retrievers for different query modes.
+- GPTTreeIndexBuilder: Builds the tree structure by recursively summarizing groups of nodes until reaching root nodes.
+- TreeIndexInserter: Inserts new nodes into the tree and consolidates when child counts exceed the configured threshold.
 - Retrievers:
-  - TreeSelectLeafRetriever: Recursively selects promising branches using LLM prompts and refines answers.
-  - TreeAllLeafRetriever: Aggregates all leaf nodes for synthesis without requiring a prebuilt tree.
-  - TreeRootRetriever: Retrieves root nodes for direct synthesis.
-- Utilities: Helper to format numbered node lists for prompts.
-- TreeSummarize: Response synthesizer that recursively summarizes text chunks in a bottom-up manner.
+  - TreeSelectLeafRetriever: Recursively selects promising leaf nodes via LLM prompts and aggregates answers.
+  - TreeSelectLeafEmbeddingRetriever: Similar selection but prioritizes nodes by embedding similarity.
+  - TreeAllLeafRetriever: Aggregates all leaf nodes for a query-specific response synthesis.
+  - TreeRootRetriever: Uses root nodes as context for direct answer synthesis.
+- Utilities:
+  - get_numbered_text_from_nodes: Formats node lists for LLM prompts.
+- Response Synthesizers:
+  - TreeSummarize: Supports multi-level aggregation and summarization workflows.
+
+Key configuration parameters:
+- num_children: Controls fan-out for consolidation.
+- summary_template and insert_prompt: Templates guiding summarization and insertion decisions.
+- build_tree: Enables/disables initial tree construction.
+- child_branch_factor: Number of child nodes considered at each level during selection.
 
 **Section sources**
-- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L39-L190)
+- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L39-L191)
 - [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L23-L242)
 - [inserter.py](file://llama-index-core/llama_index/core/indices/tree/inserter.py#L24-L181)
-- [data_structs.py](file://llama-index-core/llama_index/core/data_structs/data_structs.py#L41-L112)
 - [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py#L56-L429)
+- [select_leaf_embedding_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_embedding_retriever.py#L20-L159)
 - [all_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/all_leaf_retriever.py#L18-L57)
-- [tree_root_retriever.py](file://llama-index-core/llama_index/core/indices/tree/tree_root_retriever.py#L16-L51)
 - [utils.py](file://llama-index-core/llama_index/core/indices/tree/utils.py#L8-L28)
-- [tree_summarize.py](file://llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py#L17-L231)
+- [tree_summarize.py](file://llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py)
 
 ## Architecture Overview
-The Tree Index architecture centers around a hierarchical graph where each internal node summarizes its children. Construction and query are orchestrated by the index class and specialized components.
-
-```mermaid
-classDiagram
-class TreeIndex {
-+num_children : int
-+summary_template
-+insert_prompt
-+build_tree : bool
-+as_retriever(mode)
-+insert(nodes)
-+ref_doc_info
-}
-class GPTTreeIndexBuilder {
-+num_children : int
-+summary_prompt
-+build_from_nodes(nodes, build_tree)
-+build_index_from_nodes(index_graph, cur_node_ids, all_node_ids, level)
-}
-class TreeIndexInserter {
-+num_children : int
-+summary_prompt
-+insert_prompt
-+insert(nodes)
--_insert_node(node, parent)
--_insert_under_parent_and_consolidate(text_node, parent_node)
-}
-class IndexGraph {
-+all_nodes : Dict
-+root_nodes : Dict
-+node_id_to_children_ids : Dict
-+insert(node, children_nodes)
-+insert_under_parent(node, parent, new_index)
-+get_children(parent_node) Dict
-}
-class TreeSelectLeafRetriever {
-+child_branch_factor : int
-+query_template
-+query_template_multiple
-+_query_level(...)
-+_retrieve_level(...)
-}
-class TreeAllLeafRetriever {
-+_retrieve(query_bundle)
-}
-class TreeRootRetriever {
-+_retrieve(query_bundle)
-}
-TreeIndex --> GPTTreeIndexBuilder : "builds"
-TreeIndex --> TreeIndexInserter : "inserts"
-TreeIndex --> IndexGraph : "stores"
-TreeSelectLeafRetriever --> TreeIndex : "uses"
-TreeAllLeafRetriever --> TreeIndex : "uses"
-TreeRootRetriever --> TreeIndex : "uses"
-```
-
-**Diagram sources**
-- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L39-L190)
-- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L23-L242)
-- [inserter.py](file://llama-index-core/llama_index/core/indices/tree/inserter.py#L24-L181)
-- [data_structs.py](file://llama-index-core/llama_index/core/data_structs/data_structs.py#L41-L112)
-- [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py#L56-L429)
-- [all_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/all_leaf_retriever.py#L18-L57)
-- [tree_root_retriever.py](file://llama-index-core/llama_index/core/indices/tree/tree_root_retriever.py#L16-L51)
-
-## Detailed Component Analysis
-
-### TreeIndex: Construction, Insertion, and Retrievers
-- Construction: Uses a builder to create a bottom-up tree. The builder groups nodes into chunks sized to fit the LLM’s context and generates summaries to form parent nodes until reaching root nodes.
-- Insertion: Inserts new nodes and consolidates when a parent exceeds the configured number of children, generating new intermediate nodes and updating summaries.
-- Retrievers: Exposes multiple modes:
-  - select_leaf: Recursive selection with refinement
-  - all_leaf: Retrieve all leaf nodes for synthesis
-  - root: Retrieve root nodes for direct synthesis
-  - select_leaf_embedding: Hybrid embedding-based selection
+The Tree Index architecture centers around a bottom-up construction phase followed by multiple retrieval strategies. The builder creates a balanced tree by grouping nodes and generating summaries iteratively. Retrievers then traverse the tree either deterministically (selection) or by similarity (embedding), aggregating responses using synthesizers.
 
 ```mermaid
 sequenceDiagram
-participant U as "User"
-participant TI as "TreeIndex"
-participant GB as "GPTTreeIndexBuilder"
-participant IG as "IndexGraph"
-U->>TI : "from_documents(nodes)"
-TI->>GB : "build_from_nodes(nodes, build_tree)"
-GB->>IG : "insert leaf nodes"
-GB->>GB : "build_index_from_nodes(...)"
-GB->>IG : "insert parent nodes"
-GB-->>TI : "IndexGraph"
-TI-->>U : "Ready to query"
+participant User as "User"
+participant Index as "TreeIndex"
+participant Builder as "GPTTreeIndexBuilder"
+participant Docstore as "Docstore"
+participant Retriever as "TreeSelectLeafRetriever"
+participant Synth as "ResponseSynthesizer"
+User->>Index : "Build index from nodes"
+Index->>Builder : "build_from_nodes(nodes)"
+Builder->>Docstore : "insert leaf nodes"
+loop "Recursive consolidation"
+Builder->>Builder : "summarize groups of nodes"
+Builder->>Docstore : "add parent summary nodes"
+end
+Builder-->>Index : "IndexGraph with root_nodes"
+User->>Index : "as_retriever(SELECT_LEAF)"
+Index-->>User : "TreeSelectLeafRetriever"
+User->>Retriever : "query(query_str)"
+Retriever->>Retriever : "select nodes at each level"
+Retriever->>Synth : "synthesize response from selected nodes"
+Synth-->>Retriever : "final answer"
+Retriever-->>User : "Response"
 ```
 
 **Diagram sources**
 - [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L138-L150)
-- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L60-L81)
-- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L140-L195)
+- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L60-L195)
+- [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py#L161-L286)
+- [tree_summarize.py](file://llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py)
+
+## Detailed Component Analysis
+
+### TreeIndex Class
+TreeIndex encapsulates the tree index lifecycle: initialization, construction, insertion, and retriever selection. It validates whether tree-based retrievers are supported based on build_tree and exposes as_retriever to obtain different retrieval strategies.
+
+Key behaviors:
+- Initialization stores configuration (num_children, summary_template, insert_prompt, build_tree, use_async, show_progress).
+- as_retriever maps retriever_mode to concrete retriever classes and enforces tree requirement validation.
+- _build_index_from_nodes delegates to GPTTreeIndexBuilder with appropriate parameters.
+- _insert delegates to TreeIndexInserter for incremental updates.
+
+```mermaid
+classDiagram
+class TreeIndex {
++int num_children
++bool build_tree
++bool _use_async
++as_retriever(retriever_mode, embed_model) BaseRetriever
++_build_index_from_nodes(nodes) IndexGraph
++_insert(nodes) void
++_delete_node(node_id) void
++ref_doc_info Dict
+}
+class GPTTreeIndexBuilder {
++int num_children
++build_from_nodes(nodes, build_tree) IndexGraph
++build_index_from_nodes(graph, cur_node_ids, all_node_ids, level) IndexGraph
+}
+class TreeIndexInserter {
++int num_children
++insert(nodes) void
+-_insert_node(node, parent_node) void
+-_insert_under_parent_and_consolidate(text_node, parent_node) void
+}
+TreeIndex --> GPTTreeIndexBuilder : "builds tree"
+TreeIndex --> TreeIndexInserter : "inserts nodes"
+```
+
+**Diagram sources**
+- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L39-L191)
+- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L23-L242)
+- [inserter.py](file://llama-index-core/llama_index/core/indices/tree/inserter.py#L24-L181)
 
 **Section sources**
-- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L39-L190)
-- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L23-L242)
+- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L39-L191)
 
-### Tree Construction Algorithm (Bottom-Up)
-- Groups current nodes into chunks of size equal to num_children.
-- Truncates concatenated child texts to fit the summarization prompt.
-- Generates summaries for each chunk and inserts a new parent node linking to the chunk’s children.
-- Recursively continues until the number of root nodes is less than or equal to num_children.
+### Tree Construction Algorithms
+The builder performs bottom-up consolidation:
+- Groups current nodes into chunks of size num_children.
+- Truncates and summarizes each chunk to produce a parent summary node.
+- Inserts parent nodes and repeats until root nodes remain with size ≤ num_children.
 
 ```mermaid
 flowchart TD
-Start(["Start"]) --> Prep["Group nodes into chunks of size num_children"]
-Prep --> Trunc["Truncate chunk texts to fit summarization prompt"]
-Trunc --> Summ["Generate summaries for each chunk"]
-Summ --> InsertParent["Insert parent node linking to chunk children"]
-InsertParent --> UpdateRoots["Update root_nodes to new parent set"]
-UpdateRoots --> Check{"Root count <= num_children?"}
-Check --> |Yes| Done(["Done"])
-Check --> |No| Recurse["Recurse with new root set"]
-Recurse --> Prep
+Start(["Start build"]) --> Init["Initialize IndexGraph with leaf nodes"]
+Init --> CheckSize{"Current level node count <= num_children?"}
+CheckSize --> |Yes| SetRoots["Set root_nodes"]
+CheckSize --> |No| Chunk["Group nodes into chunks of size num_children"]
+Chunk --> Truncate["Truncate texts for LLM limits"]
+Truncate --> Summarize["LLM predicts summaries for chunks"]
+Summarize --> InsertParent["Insert parent summary nodes<br/>link to children"]
+InsertParent --> UpdateAll["Update all_node_ids"]
+UpdateAll --> NextIter["Set current nodes = new parent nodes"]
+NextIter --> CheckSize
+SetRoots --> End(["End"])
 ```
 
 **Diagram sources**
-- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L83-L110)
-- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L140-L195)
+- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L60-L195)
 
 **Section sources**
-- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L83-L195)
+- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L60-L195)
 
-### Parent-Child Relationships and IndexGraph
-- IndexGraph maintains:
-  - all_nodes: mapping from index to node ID
-  - root_nodes: mapping from index to root node ID
-  - node_id_to_children_ids: adjacency mapping from parent node ID to children node IDs
-- Insertion APIs:
-  - insert: adds a node and optionally links children
-  - insert_under_parent: inserts under a parent and updates adjacency
+### Leaf/Root Node Management and Recursive Retrieval
+TreeSelectLeafRetriever implements a top-down selection strategy:
+- At each level, it formats child node texts and asks the LLM to choose nodes (single or multiple based on child_branch_factor).
+- If a leaf is reached, it synthesizes a response using a text-qa synthesizer; otherwise, it recurses into selected children.
+- A refinement template can be applied to aggregate multiple selections.
 
-```mermaid
-erDiagram
-INDEX_GRAPH {
-map all_nodes
-map root_nodes
-map node_id_to_children_ids
-}
-NODE {
-string node_id
-string text
-}
-INDEX_GRAPH ||--o{ NODE : "contains"
-NODE ||--o{ NODE : "children via node_id_to_children_ids"
-```
+TreeSelectLeafEmbeddingRetriever mirrors the selection logic but chooses nodes by embedding similarity instead of LLM choice.
 
-**Diagram sources**
-- [data_structs.py](file://llama-index-core/llama_index/core/data_structs/data_structs.py#L41-L112)
+TreeAllLeafRetriever collects all leaf nodes for a query-specific synthesis without building the index initially.
 
-**Section sources**
-- [data_structs.py](file://llama-index-core/llama_index/core/data_structs/data_structs.py#L41-L112)
-
-### Recursive Retrieval Pattern (Leaf Selection)
-- At each level, the retriever:
-  - Formats a numbered list of candidate nodes
-  - Asks the LLM to select one or more nodes (branching factor)
-  - Recursively descends into selected children
-  - On leaf nodes, synthesizes an answer and refines iteratively if needed
+TreeRootRetriever uses root nodes as context for direct answer synthesis.
 
 ```mermaid
 sequenceDiagram
 participant Q as "QueryBundle"
-participant SLR as "TreeSelectLeafRetriever"
+participant R as "TreeSelectLeafRetriever"
 participant LLM as "LLM"
-participant IG as "IndexGraph"
+participant DS as "Docstore"
 participant RS as "ResponseSynthesizer"
-Q->>SLR : "_query_level(root_nodes, query_bundle)"
-SLR->>IG : "get_children(current)"
-SLR->>SLR : "format numbered context"
-SLR->>LLM : "predict(query_template, context_list)"
-LLM-->>SLR : "selected indices"
-SLR->>SLR : "for each selected index"
-alt Leaf node
-SLR->>RS : "get_response(query, node_text, prev_response)"
-RS-->>SLR : "answer"
-else Internal node
-SLR->>SLR : "_query_level(children, ...)"
+R->>R : "_query_level(root_nodes, Q)"
+alt "Only one node"
+R->>R : "_query_with_selected_node(node, Q)"
+else "child_branch_factor == 1"
+R->>DS : "get nodes by ids"
+R->>R : "format numbered texts"
+R->>LLM : "predict single selection"
+LLM-->>R : "selected number"
+R->>R : "_query_with_selected_node(selected, Q)"
+else "child_branch_factor > 1"
+R->>DS : "get nodes by ids"
+R->>R : "format numbered texts"
+R->>LLM : "predict multiple selections"
+LLM-->>R : "selected numbers"
+loop "for each selected"
+R->>R : "_query_with_selected_node(selected, Q)"
 end
-SLR-->>Q : "final answer"
+end
+R->>RS : "synthesize final response"
+RS-->>R : "Response"
 ```
 
 **Diagram sources**
-- [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py#L161-L271)
+- [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py#L161-L286)
+- [tree_summarize.py](file://llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py)
 
 **Section sources**
 - [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py#L56-L429)
+- [select_leaf_embedding_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_embedding_retriever.py#L20-L159)
+- [all_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/all_leaf_retriever.py#L18-L57)
+- [tree_root_retriever.py](file://llama-index-core/llama_index/core/indices/tree/tree_root_retriever.py)
 
-### Dynamic Updates and Insertion Strategy
-- Insertion:
-  - If parent has no children or is a leaf layer, insert directly and consolidate if needed
-  - Otherwise, ask the LLM to select a subtree for insertion
-  - After insertion, bubble up and update the parent’s summary
-- Consolidation:
-  - When a parent exceeds num_children, split children into halves, summarize each half, and insert new intermediate nodes
+### Multi-Level Aggregation Patterns
+Multi-level aggregation occurs during:
+- Tree construction: Parent nodes summarize children.
+- Query-time selection: Responses from selected nodes are aggregated using a refinement template.
+- Root-based synthesis: Root nodes serve as consolidated context for direct answers.
 
-```mermaid
-flowchart TD
-IStart(["Insert node"]) --> CheckEmpty["Parent has children?"]
-CheckEmpty --> |No| InsertDirect["Insert under parent"]
-CheckEmpty --> |Yes| IsLeaf["Are children leaf nodes?"]
-IsLeaf --> |Yes| InsertDirect
-IsLeaf --> |No| AskLLM["Ask LLM to select subtree"]
-AskLLM --> Valid{"Valid selection?"}
-Valid --> |No| InsertDirect
-Valid --> |Yes| Descend["Descend to selected child"]
-Descend --> InsertDirect
-InsertDirect --> Consolidate{"Exceeds num_children?"}
-Consolidate --> |No| UpdateParent["Update parent summary"]
-Consolidate --> |Yes| Split["Split children into halves"]
-Split --> Summ1["Summarize half1"]
-Split --> Summ2["Summarize half2"]
-Summ1 --> NewParent1["Insert new parent nodes"]
-Summ2 --> NewParent2["Insert new parent nodes"]
-NewParent1 --> UpdateParent
-NewParent2 --> UpdateParent
-UpdateParent --> IEnd(["Done"])
-```
-
-**Diagram sources**
-- [inserter.py](file://llama-index-core/llama_index/core/indices/tree/inserter.py#L116-L181)
+TreeSummarize supports hierarchical aggregation workflows and integrates with tree-based retrieval.
 
 **Section sources**
-- [inserter.py](file://llama-index-core/llama_index/core/indices/tree/inserter.py#L24-L181)
+- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L112-L138)
+- [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py#L110-L159)
+- [tree_summarize.py](file://llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py)
 
-### Tree-Based Summarization (TreeSummarize)
-- Recursively packs text chunks to fit the LLM context
-- If only one chunk remains, returns the LLM’s prediction
-- Otherwise, summarizes each chunk and recurses on summaries
+### Practical Examples and Configuration
 
-```mermaid
-flowchart TD
-SStart(["Summarize text_chunks"]) --> Repack["Repack to fit context"]
-Repack --> OneChunk{"len == 1?"}
-OneChunk --> |Yes| Final["LLM predict on chunk"]
-OneChunk --> |No| SumEach["Summarize each chunk"]
-SumEach --> Recurse["Recursively summarize summaries"]
-Final --> SEnd(["Return response"])
-Recurse --> SEnd
-```
+- Configure tree depth and fan-out:
+  - Adjust num_children to control consolidation granularity. Smaller values increase depth; larger values reduce depth.
+  - Use build_tree to defer index construction for query-time strategies (e.g., TreeAllLeafRetriever).
 
-**Diagram sources**
-- [tree_summarize.py](file://llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py#L134-L231)
+- Handle recursive retrieval:
+  - Choose child_branch_factor to balance exploration breadth vs. precision.
+  - Use TreeSelectLeafEmbeddingRetriever for similarity-driven selection when LLM parsing is unreliable.
 
-**Section sources**
-- [tree_summarize.py](file://llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py#L17-L231)
+- Optimize tree traversal:
+  - Enable use_async in TreeIndex to parallelize summary predictions.
+  - Use show_progress to monitor long-running operations.
 
-### Practical Examples and Usage Patterns
-- Index creation and basic query:
-  - Build a TreeIndex from documents
-  - Retrieve nodes via as_retriever() with default mode
-- All-leaf retrieval without prebuilt tree:
-  - Disable build_tree and use all_leaf mode to aggregate leaves for synthesis
-- Root-based retrieval:
-  - Use root mode to synthesize answers directly from root nodes
+- Combine with other indexing strategies:
+  - Use TreeIndex alongside VectorIndex for hybrid retrieval: retrieve candidate nodes from the vector index and apply TreeSelectLeafRetriever for precise aggregation.
+  - Use TreeRootRetriever as a coarse-grained baseline while keeping TreeSelectLeafRetriever for detailed queries.
 
-**Section sources**
-- [README.md](file://llama-index-core/llama_index/core/indices/tree/README.md#L21-L32)
-- [test_retrievers.py](file://llama-index-core/tests/indices/tree/test_retrievers.py#L7-L42)
-- [test_index.py](file://llama-index-core/tests/indices/tree/test_index.py#L131-L185)
+[No sources needed since this section provides general guidance]
 
 ## Dependency Analysis
-Key dependencies and relationships:
-- TreeIndex depends on IndexGraph for storage and navigation
-- GPTTreeIndexBuilder and TreeIndexInserter both operate on IndexGraph
-- Retrievers depend on TreeIndex and IndexGraph for traversal
-- Utilities support prompt formatting for retrievers
-- TreeSummarize integrates with prompt helpers and LLMs
+TreeIndex depends on:
+- IndexGraph for storing nodes and relationships.
+- GPTTreeIndexBuilder for bottom-up construction.
+- TreeIndexInserter for incremental insertion and consolidation.
+- Retrievers for query-time strategies.
+- Response synthesizers for aggregation.
 
 ```mermaid
-graph LR
-TI["TreeIndex"] --> IG["IndexGraph"]
-TI --> GB["GPTTreeIndexBuilder"]
-TI --> INS["TreeIndexInserter"]
-SLR["TreeSelectLeafRetriever"] --> TI
-ALR["TreeAllLeafRetriever"] --> TI
-RRR["TreeRootRetriever"] --> TI
-SLR --> UT["get_numbered_text_from_nodes"]
-TS["TreeSummarize"] --> IG
+graph TB
+TreeIndex["TreeIndex"] --> IndexGraph["IndexGraph"]
+TreeIndex --> Builder["GPTTreeIndexBuilder"]
+TreeIndex --> Inserter["TreeIndexInserter"]
+TreeIndex --> SelLeaf["TreeSelectLeafRetriever"]
+TreeIndex --> SelEmb["TreeSelectLeafEmbeddingRetriever"]
+TreeIndex --> AllLeaf["TreeAllLeafRetriever"]
+TreeIndex --> RootRet["TreeRootRetriever"]
+SelLeaf --> Utils["get_numbered_text_from_nodes"]
+SelEmb --> SelLeaf
+SelLeaf --> Synth["ResponseSynthesizer"]
 ```
 
 **Diagram sources**
-- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L39-L190)
+- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L39-L191)
 - [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L23-L242)
 - [inserter.py](file://llama-index-core/llama_index/core/indices/tree/inserter.py#L24-L181)
 - [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py#L56-L429)
+- [select_leaf_embedding_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_embedding_retriever.py#L20-L159)
 - [all_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/all_leaf_retriever.py#L18-L57)
-- [tree_root_retriever.py](file://llama-index-core/llama_index/core/indices/tree/tree_root_retriever.py#L16-L51)
 - [utils.py](file://llama-index-core/llama_index/core/indices/tree/utils.py#L8-L28)
-- [tree_summarize.py](file://llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py#L17-L231)
 
 **Section sources**
-- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L39-L190)
-- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L23-L242)
-- [inserter.py](file://llama-index-core/llama_index/core/indices/tree/inserter.py#L24-L181)
-- [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py#L56-L429)
-- [all_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/all_leaf_retriever.py#L18-L57)
-- [tree_root_retriever.py](file://llama-index-core/llama_index/core/indices/tree/tree_root_retriever.py#L16-L51)
-- [utils.py](file://llama-index-core/llama_index/core/indices/tree/utils.py#L8-L28)
-- [tree_summarize.py](file://llama-index-core/llama_index/core/response_synthesizers/tree_summarize.py#L17-L231)
+- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L39-L191)
+- [__init__.py](file://llama-index-core/llama_index/core/indices/tree/__init__.py#L4-L12)
 
 ## Performance Considerations
-- num_children tuning:
-  - Larger num_children reduces depth but increases summarization cost per parent
-  - Smaller num_children increases depth but may reduce per-summary token usage
-- Async summarization:
-  - Builders and synthesizers support async predictions to improve throughput
-- Prompt truncation:
-  - PromptHelper ensures chunk sizes fit model context windows
-- Memory management:
-  - IndexGraph stores node IDs and adjacency; avoid retaining unnecessary intermediate nodes
-  - Prefer root or all-leaf modes when synthesis can be done without traversal
-- Retrieval optimization:
-  - child_branch_factor controls how many candidates are selected per level; higher values increase LLM calls but may improve accuracy
+- Tree depth and num_children: Deeper trees (smaller num_children) improve recall but increase LLM calls and latency.
+- Asynchronous summarization: Enabling use_async reduces wall-clock time for bulk summary generation.
+- Embedding-based selection: Reduces reliance on LLM parsing and can speed up selection when available.
+- Query-time strategies:
+  - TreeRootRetriever minimizes traversal cost but may miss nuanced details.
+  - TreeAllLeafRetriever avoids building the index but recomputes a query-specific tree each time.
 
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
-- Index not built:
-  - Some retriever modes require a prebuilt tree; ensure build_tree is enabled or use all_leaf/root modes
-- Insertion failures:
-  - If LLM fails to return a valid selection, insertion falls back to inserting under the parent
-- Unexpected query behavior:
-  - Verify child_branch_factor and query templates; ensure context formatting matches model expectations
+- Retrieval mode requires a built tree:
+  - If build_tree is disabled and a tree-dependent retriever mode is used, a validation error is raised. Enable build_tree or switch to a compatible mode.
+
+- Insertion consolidation:
+  - If insertions cause frequent consolidations, consider increasing num_children to reduce intermediate layers.
+
+- Selection failures:
+  - If LLM parsing fails to return valid node numbers, selection falls back to returning current context. Consider adjusting prompts or switching to embedding-based selection.
+
 - Cost and latency:
-  - Monitor summarization calls; consider reducing num_children or disabling async if resources are constrained
+  - Tree construction and query costs scale with log depth. Use async and embedding-based selection to optimize.
 
 **Section sources**
 - [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L130-L137)
-- [inserter.py](file://llama-index-core/llama_index/core/indices/tree/inserter.py#L140-L155)
-- [README.md](file://llama-index-core/llama_index/core/indices/tree/README.md#L34-L50)
+- [inserter.py](file://llama-index-core/llama_index/core/indices/tree/inserter.py#L37-L40)
+- [select_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/select_leaf_retriever.py#L223-L241)
 
 ## Conclusion
-Tree Indexes in LlamaIndex provide a powerful hierarchical abstraction for organizing and querying large corpora. The bottom-up construction and recursive retrieval mechanisms enable scalable summarization and targeted answer synthesis. By tuning parameters like num_children and child_branch_factor, and leveraging appropriate retriever modes, users can balance accuracy, cost, and latency for diverse workloads.
+Tree Indexes in LlamaIndex provide a powerful hierarchical abstraction for organizing and querying large document collections. Through bottom-up construction, multi-level aggregation, and flexible retrieval strategies—ranging from deterministic selection to embedding-based prioritization—the system balances precision, cost, and performance. By tuning parameters like num_children and child_branch_factor, and combining tree structures with other indexing strategies, users can tailor retrieval to diverse use cases involving hierarchical organization, summarization workflows, and complex query processing.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
 ## Appendices
 
-### Best Practices and Configurations
-- Small to medium documents:
-  - Use moderate num_children (e.g., 10) and default child_branch_factor
-- Large documents or long contexts:
-  - Reduce num_children to minimize summarization length
-  - Enable async summarization for throughput
-- Multi-level aggregation:
-  - Use all_leaf mode to aggregate leaves for synthesis without traversal
-- Root-based synthesis:
-  - Pre-seed the index with a query-aware summary to accelerate root retrieval
-
-**Section sources**
-- [base.py](file://llama-index-core/llama_index/core/indices/tree/base.py#L64-L92)
-- [base.py](file://llama-index-core/llama_index/core/indices/common_tree/base.py#L32-L54)
-- [all_leaf_retriever.py](file://llama-index-core/llama_index/core/indices/tree/all_leaf_retriever.py#L18-L57)
-- [tree_root_retriever.py](file://llama-index-core/llama_index/core/indices/tree/tree_root_retriever.py#L16-L51)
-
 ### Example Workflows
-- Build index and query:
-  - Create TreeIndex from documents
-  - Retrieve nodes with default mode and synthesize answers
-- Dynamic updates:
-  - Insert new documents; insertion consolidates when needed and updates parent summaries
-- Integration with other indices:
-  - Combine TreeIndex with ComposableGraph for multi-index workflows
+- Hierarchical document organization:
+  - Build a deep tree (small num_children) to capture topic hierarchies; use TreeSelectLeafRetriever for precise answers.
+- Summarization workflows:
+  - Use TreeRootRetriever for a quick overview; then drill down with TreeSelectLeafRetriever for detailed insights.
+- Complex query processing:
+  - Combine vector retrieval to narrow candidates, then apply TreeSelectLeafRetriever for hierarchical aggregation.
 
-**Section sources**
-- [README.md](file://llama-index-core/llama_index/core/indices/tree/README.md#L21-L32)
-- [test_index.py](file://llama-index-core/tests/indices/tree/test_index.py#L131-L185)
-- [test_retrievers.py](file://llama-index-core/tests/indices/tree/test_retrievers.py#L7-L42)
+[No sources needed since this section provides general guidance]

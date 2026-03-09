@@ -5,15 +5,11 @@
 - [__init__.py](file://llama-index-core/llama_index/core/__init__.py)
 - [settings.py](file://llama-index-core/llama_index/core/settings.py)
 - [service_context.py](file://llama-index-core/llama_index/core/service_context.py)
+- [schema.py](file://llama-index-core/llama_index/core/schema.py)
+- [types.py](file://llama-index-core/llama_index/core/types.py)
 - [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py)
-- [pipeline.py](file://llama-index-core/llama_index/core/ingestion/pipeline.py)
-- [cache.py](file://llama-index-core/llama_index/core/ingestion/cache.py)
-- [data_structs.py](file://llama-index-core/llama_index/core/data_structs/data_structs.py)
-- [struct_type.py](file://llama-index-core/llama_index/core/data_structs/struct_type.py)
-- [indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py)
-- [node_parser/__init__.py](file://llama-index-core/llama_index/core/node_parser/__init__.py)
-- [retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py)
-- [query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py)
+- [factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py)
+- [base.py](file://llama-index-core/llama_index/core/callbacks/base.py)
 </cite>
 
 ## Table of Contents
@@ -28,157 +24,125 @@
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document explains the LlamaIndex core framework’s foundational building blocks that power Retrieval-Augmented Generation (RAG) applications. It covers:
-- Global configuration via the Settings singleton and deprecation of ServiceContext
-- Data ingestion pipeline with node parsing, metadata extraction, transformations, and caching
-- Indexing systems (vector stores, keyword tables, tree structures, property graphs, document summaries)
-- Retrieval engines (vector, BM25, fusion/hybrid, recursive)
-- Query processing engines (simple, router, transform, composable)
-- Practical usage patterns and component relationships
+This document explains the LlamaIndex core framework’s foundational architecture and configuration model. It focuses on:
+- The centralized Settings system that replaces the deprecated ServiceContext
+- Modular component organization around Schema and Types
+- Core API structure and usage patterns
+- Practical examples of configuration and component relationships
+- Design patterns used throughout the framework (factory, strategy, observer)
 
-The goal is to help beginners understand RAG fundamentals and experienced developers implement efficient, scalable solutions using LlamaIndex’s core APIs.
+The goal is to help both beginners and experienced developers understand how to configure, compose, and extend the framework effectively.
 
 ## Project Structure
-At the heart of the core framework are:
-- Global configuration: Settings singleton and related utilities
-- Storage context: Encapsulates persistent stores for documents, indices, vectors, and graphs
-- Ingestion pipeline: Node parsing, transformations, and caching
-- Indexing and retrieval: Pluggable index types and retrievers
-- Query engines: Orchestration of retrieval and response synthesis
+At the heart of the core are four pillars:
+- Settings: Centralized configuration with lazy initialization and property-based accessors
+- Schema: Data structures and type enums for nodes, documents, and relationships
+- Types: Shared type definitions, output parsers, and program abstractions
+- StorageContext: Container for persistence stores and vector stores
 
 ```mermaid
 graph TB
-subgraph "Global Configuration"
-Settings["Settings (singleton)"]
+subgraph "Core"
+S["Settings<br/>centralized config"]
+SC["ServiceContext<br/>(deprecated)"]
+ST["StorageContext<br/>persistence stores"]
+SCH["Schema<br/>data structures & enums"]
+T["Types<br/>shared types & parsers"]
 end
-subgraph "Storage"
-SC["StorageContext"]
-DS["DocStore"]
-IS["IndexStore"]
-VS["VectorStore(s)"]
-GS["GraphStore"]
-PGS["PropertyGraphStore"]
+subgraph "Integration"
+RSF["Response Synthesizer Factory"]
+CB["Callback Manager"]
 end
-subgraph "Ingestion"
-NP["NodeParser(s)"]
-TR["TransformComponents"]
-IC["IngestionCache"]
-end
-subgraph "Indexes"
-IDX["Indices (List/Tree/Keyword/Vector/Summary/KG/PG)"]
-end
-subgraph "Retrievers"
-VR["VectorIndexRetriever"]
-BR["BM25Retriever"]
-RR["RecursiveRetriever"]
-FR["QueryFusionRetriever"]
-end
-subgraph "Query Engines"
-QE["RetrieverQueryEngine"]
-RQE["RouterQueryEngine"]
-TQE["TransformQueryEngine"]
-CGQE["ComposableGraphQueryEngine"]
-end
-Settings --> SC
-SC --> DS
-SC --> IS
-SC --> VS
-SC --> GS
-SC --> PGS
-Settings --> NP
-NP --> TR
-TR --> IC
-TR --> IDX
-IDX --> VR
-IDX --> BR
-IDX --> RR
-VR --> FR
-BR --> FR
-VR --> QE
-BR --> QE
-FR --> QE
-RR --> QE
-QE --> RQE
-QE --> TQE
-QE --> CGQE
+S --> RSF
+S --> CB
+ST --> RSF
+SCH --> RSF
+T --> RSF
+SC -.-> S
 ```
 
 **Diagram sources**
 - [settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L248)
-- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L52-L278)
-- [pipeline.py](file://llama-index-core/llama_index/core/ingestion/pipeline.py#L71-L172)
-- [cache.py](file://llama-index-core/llama_index/core/ingestion/cache.py#L38-L78)
-- [indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
-- [retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py#L1-L89)
-- [query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
+- [service_context.py](file://llama-index-core/llama_index/core/service_context.py#L4-L48)
+- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L52-L149)
+- [schema.py](file://llama-index-core/llama_index/core/schema.py#L206-L246)
+- [types.py](file://llama-index-core/llama_index/core/types.py#L137-L146)
+- [factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L33-L151)
+- [base.py](file://llama-index-core/llama_index/core/callbacks/base.py#L28-L85)
 
 **Section sources**
-- [__init__.py](file://llama-index-core/llama_index/core/__init__.py#L70-L92)
-- [settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L248)
-- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L52-L278)
+- [__init__.py](file://llama-index-core/llama_index/core/__init__.py#L71-L81)
+- [__init__.py](file://llama-index-core/llama_index/core/__init__.py#L78-L78)
+- [__init__.py](file://llama-index-core/llama_index/core/__init__.py#L81-L81)
 
 ## Core Components
-- Settings singleton: Centralizes defaults for LLM, embeddings, tokenizer, node parser, prompt helper, and transformations. Provides lazy initialization and integrates callback manager.
-- StorageContext: Aggregates and persists the document, index, vector, graph, and property graph stores.
-- Ingestion pipeline: Runs transformations in order, optionally caching results keyed by input nodes and transformation config.
-- Indices: Pluggable index structures (list, tree, keyword, vector, document summary, knowledge graph, property graph).
-- Retrievers: Vector, BM25, fusion/hybrid, recursive, router, and specialized retrievers.
-- Query engines: Simple retrieval, router-based routing, transform-based preprocessing, and composable graph orchestration.
+- Settings: A singleton dataclass that lazily resolves and exposes LLM, embedding model, callback manager, tokenizer, node parser, prompt helper, and transformations. It also exposes convenience aliases like text_splitter and prompt_helper-derived num_output and context_window.
+- Schema: Defines BaseComponent, TransformComponent, NodeRelationship, ObjectType, MetadataMode, BaseNode, Node, TextNode, and related types. Provides serialization hooks and metadata handling.
+- Types: Defines RESPONSE_TEXT_TYPE, BaseOutputParser, BasePydanticProgram, PydanticProgramMode, and a context-aware Thread wrapper.
+- StorageContext: Holds and initializes document, index, graph, and vector stores, with persistence and deserialization helpers.
+- ServiceContext: Deprecated in favor of Settings; attempting to instantiate raises an error and suggests migration.
+
+Practical usage highlights:
+- Replace ServiceContext with Settings for configuration
+- Use StorageContext.from_defaults to bootstrap persistence stores
+- Leverage Settings properties to access LLM, embeddings, and prompt helper
+- Use the response synthesizer factory to select a strategy based on ResponseMode
 
 **Section sources**
 - [settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L248)
-- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L52-L278)
-- [pipeline.py](file://llama-index-core/llama_index/core/ingestion/pipeline.py#L71-L172)
-- [cache.py](file://llama-index-core/llama_index/core/ingestion/cache.py#L38-L78)
-- [indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
-- [retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py#L1-L89)
-- [query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
+- [schema.py](file://llama-index-core/llama_index/core/schema.py#L80-L188)
+- [schema.py](file://llama-index-core/llama_index/core/schema.py#L206-L246)
+- [schema.py](file://llama-index-core/llama_index/core/schema.py#L262-L482)
+- [schema.py](file://llama-index-core/llama_index/core/schema.py#L612-L797)
+- [types.py](file://llama-index-core/llama_index/core/types.py#L41-L101)
+- [types.py](file://llama-index-core/llama_index/core/types.py#L103-L146)
+- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L52-L149)
+- [service_context.py](file://llama-index-core/llama_index/core/service_context.py#L4-L48)
 
 ## Architecture Overview
-The core architecture follows a layered design:
-- Configuration layer: Settings provides global defaults and lazy resolution of LLM/embeddings/tokenizer/node parser.
-- Persistence layer: StorageContext manages stores and supports persistence to disk or remote filesystems.
-- Ingestion layer: Node parsing and transformations produce nodes ready for indexing.
-- Indexing layer: Nodes are stored in various index structures optimized for retrieval.
-- Retrieval layer: Retrievers fetch candidate nodes for a query.
-- Query layer: Query engines orchestrate retrieval, optional transformations, and synthesis.
+The framework follows a layered design:
+- Configuration layer: Settings centralizes defaults and lazy resolution
+- Data layer: Schema defines the canonical data structures
+- Strategy layer: Response synthesizer factory selects behavior based on mode
+- Persistence layer: StorageContext manages stores and persistence
+- Observability layer: CallbackManager observes lifecycle events
 
 ```mermaid
 sequenceDiagram
 participant App as "Application"
 participant Settings as "Settings"
-participant SC as "StorageContext"
-participant NP as "NodeParser"
-participant TR as "Transformations"
-participant IDX as "Index"
-participant RET as "Retriever(s)"
-participant QE as "QueryEngine"
-App->>Settings : Access llm/embed_model/tokenizer
-App->>SC : from_defaults() or persist_dir
-App->>NP : parse Documents -> Nodes
-App->>TR : run_transformations(nodes, transforms)
-TR-->>IDX : store nodes
-App->>QE : query(query)
-QE->>RET : retrieve(query)
-RET-->>QE : nodes
-QE-->>App : response
+participant RSF as "Response Synthesizer Factory"
+participant LLM as "LLM"
+participant Embed as "Embedding Model"
+participant PH as "Prompt Helper"
+App->>Settings : Access llm/embed_model/prompt_helper
+Settings-->>App : Lazy-resolved instances
+App->>RSF : get_response_synthesizer(response_mode, ...)
+RSF->>Settings : Resolve llm, callback_manager, prompt_helper
+RSF->>LLM : Initialize with resolved settings
+RSF->>PH : Initialize with LLM metadata
+RSF-->>App : BaseSynthesizer instance
 ```
 
 **Diagram sources**
 - [settings.py](file://llama-index-core/llama_index/core/settings.py#L32-L74)
-- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L73-L149)
-- [pipeline.py](file://llama-index-core/llama_index/core/ingestion/pipeline.py#L71-L105)
-- [indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L46-L50)
-- [retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py#L40-L48)
-- [query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L31-L33)
+- [settings.py](file://llama-index-core/llama_index/core/settings.py#L198-L230)
+- [factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L33-L79)
+- [factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L57-L65)
 
 ## Detailed Component Analysis
 
-### Settings Singleton and Global Configuration
-- Purpose: Provide a single source of truth for LLM, embeddings, tokenizer, node parser, prompt helper, and transformations.
-- Lazy initialization: Components are resolved only when accessed.
-- Integration: Callback manager is attached to LLM and embedding models; tokenizer is integrated with global utilities.
-- Transformations: Defaults to a list containing the node parser; can be overridden.
+### Settings: Centralized Configuration
+Settings is a singleton dataclass that:
+- Lazily resolves LLM, embedding model, callback manager, tokenizer, node parser, and prompt helper
+- Exposes properties for pydantic_program_mode, chunk_size, chunk_overlap, num_output, context_window
+- Provides aliases like text_splitter for node_parser
+- Integrates with global handlers and tokenizers
+
+Design pattern highlights:
+- Factory pattern: resolve_* functions produce default instances
+- Strategy pattern: response synthesizer factory chooses implementation based on mode
+- Observer pattern: callback manager notifies handlers on event lifecycle
 
 ```mermaid
 classDiagram
@@ -191,284 +155,279 @@ class Settings {
 +text_splitter
 +prompt_helper
 +transformations
++pydantic_program_mode
 +chunk_size
 +chunk_overlap
 +num_output
 +context_window
 }
-class LLM
-class BaseEmbedding
-class CallbackManager
-class NodeParser
-class PromptHelper
-Settings --> LLM : "lazy resolve"
-Settings --> BaseEmbedding : "lazy resolve"
-Settings --> CallbackManager : "attach"
-Settings --> NodeParser : "default SentenceSplitter"
-Settings --> PromptHelper : "from_llm_metadata"
+class CallbackManager {
++handlers
++event(...)
++add_handler(...)
++remove_handler(...)
+}
+Settings --> CallbackManager : "uses"
 ```
 
 **Diagram sources**
 - [settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L248)
+- [base.py](file://llama-index-core/llama_index/core/callbacks/base.py#L28-L85)
 
 **Section sources**
 - [settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L248)
 
-### ServiceContext Migration Notes
-- ServiceContext is deprecated. Use Settings or pass modules directly to local APIs.
-- Global helpers remain for backward compatibility but are marked deprecated.
+### Schema: Data Structures and Enums
+Schema defines:
+- BaseComponent and TransformComponent for serialization and transformation
+- NodeRelationship, ObjectType, MetadataMode, and RelatedNodeInfo
+- BaseNode, Node, TextNode with content, metadata, relationships, and hashing
+- MediaResource for multimodal content
 
-Practical migration:
-- Replace global ServiceContext usage with Settings attributes.
-- Pass explicit modules (LLM, embed_model, node_parser) to index constructors and query engines.
+Key behaviors:
+- Serialization hooks inject class_name for robust serde
+- Metadata filtering based on MetadataMode
+- Relationship navigation helpers (source, parent, children, etc.)
+
+```mermaid
+classDiagram
+class BaseComponent {
++json(...)
++dict(...)
++to_dict(...)
++to_json(...)
++from_dict(...)
++from_json(...)
+}
+class TransformComponent {
++__call__(nodes, **kwargs)
++acall(nodes, **kwargs)
+}
+class BaseNode {
++id_ : string
++metadata : dict
++relationships : dict
++get_content(mode)
++set_content(value)
++hash : string
+}
+class Node {
++text_resource
++image_resource
++audio_resource
++video_resource
++get_content(mode)
++hash : string
+}
+class TextNode {
++text : string
++mimetype : string
++get_content(mode)
++hash : string
+}
+BaseComponent <|-- TransformComponent
+BaseComponent <|-- BaseNode
+BaseNode <|-- Node
+Node <|-- TextNode
+```
+
+**Diagram sources**
+- [schema.py](file://llama-index-core/llama_index/core/schema.py#L80-L188)
+- [schema.py](file://llama-index-core/llama_index/core/schema.py#L262-L482)
+- [schema.py](file://llama-index-core/llama_index/core/schema.py#L612-L797)
 
 **Section sources**
-- [service_context.py](file://llama-index-core/llama_index/core/service_context.py#L4-L48)
-- [__init__.py](file://llama-index-core/llama_index/core/__init__.py#L70-L78)
+- [schema.py](file://llama-index-core/llama_index/core/schema.py#L80-L188)
+- [schema.py](file://llama-index-core/llama_index/core/schema.py#L206-L246)
+- [schema.py](file://llama-index-core/llama_index/core/schema.py#L262-L482)
+- [schema.py](file://llama-index-core/llama_index/core/schema.py#L612-L797)
 
-### StorageContext and Persistence
-- Responsibilities: Manage docstore, index store, vector stores (including named namespaces), graph store, and property graph store.
-- Construction: from_defaults() creates simple stores or loads from persist_dir; supports fsspec filesystems.
-- Persistence: persist() writes stores to disk with standardized filenames; vector stores saved per namespace.
+### Types: Shared Types and Program Modes
+Types provides:
+- RESPONSE_TEXT_TYPE union for response generation
+- BaseOutputParser with format and format_messages helpers
+- BasePydanticProgram generic interface for LLM-powered functions
+- PydanticProgramMode enumeration for different program modes
+- Thread wrapper that preserves context across threads
+
+```mermaid
+classDiagram
+class BaseOutputParser {
++parse(output)
++format(query)
++format_messages(messages)
+}
+class BasePydanticProgram~Model~ {
++output_cls : Type[Model]
++__call__(*args, **kwargs)
++acall(*args, **kwargs)
++stream_call(...)
++astream_call(...)
+}
+class PydanticProgramMode {
+<<enum>>
+DEFAULT
+OPENAI
+LLM
+FUNCTION
+GUIDANCE
+"lm-format-enforcer"
+}
+```
+
+**Diagram sources**
+- [types.py](file://llama-index-core/llama_index/core/types.py#L41-L101)
+- [types.py](file://llama-index-core/llama_index/core/types.py#L103-L146)
+- [types.py](file://llama-index-core/llama_index/core/types.py#L137-L146)
+
+**Section sources**
+- [types.py](file://llama-index-core/llama_index/core/types.py#L33-L53)
+- [types.py](file://llama-index-core/llama_index/core/types.py#L103-L146)
+- [types.py](file://llama-index-core/llama_index/core/types.py#L137-L146)
+
+### StorageContext: Persistence Stores
+StorageContext encapsulates:
+- docstore, index_store, vector_stores (namespaced), graph_store, property_graph_store
+- from_defaults for simple or persisted initialization
+- persist and to_dict/from_dict for serialization
 
 ```mermaid
 classDiagram
 class StorageContext {
-+docstore
-+index_store
-+vector_stores
-+graph_store
-+property_graph_store
++docstore : BaseDocumentStore
++index_store : BaseIndexStore
++vector_stores : Dict[str, BasePydanticVectorStore]
++graph_store : GraphStore
++property_graph_store : PropertyGraphStore
 +from_defaults(...)
 +persist(...)
++to_dict()
++from_dict(...)
++vector_store
++add_vector_store(...)
 }
-class BaseDocumentStore
-class BaseIndexStore
-class BasePydanticVectorStore
-class GraphStore
-class PropertyGraphStore
-StorageContext --> BaseDocumentStore
-StorageContext --> BaseIndexStore
-StorageContext --> BasePydanticVectorStore : "dict of namespaces"
-StorageContext --> GraphStore
-StorageContext --> PropertyGraphStore
 ```
 
 **Diagram sources**
-- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L52-L278)
+- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L52-L149)
+- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L151-L203)
+- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L204-L266)
 
 **Section sources**
-- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L52-L278)
+- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L52-L149)
+- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L151-L203)
+- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L204-L266)
 
-### Data Processing Pipeline: Parsing, Transformations, and Caching
-- Node parsing: SentenceSplitter by default; others available via node_parser module.
-- Transformations: Ordered pipeline applied to nodes; each transformation receives the current nodes and returns new nodes.
-- Caching: IngestionCache stores transformed nodes keyed by a hash of input nodes and transformation config. Supports collections and persistence for simple caches.
+### Response Synthesizer Factory: Strategy Pattern
+The factory demonstrates a strategy pattern:
+- Selects a BaseSynthesizer implementation based on ResponseMode
+- Resolves llm, callback_manager, and prompt_helper from Settings when not provided
+- Supports streaming, async, and structured output modes
 
 ```mermaid
 flowchart TD
-Start(["Start Ingestion"]) --> Parse["Parse Documents -> Nodes"]
-Parse --> Loop{"More Transformations?"}
-Loop --> |Yes| Hash["Compute Transformation Hash"]
-Hash --> CacheCheck{"Cache Hit?"}
-CacheCheck --> |Yes| UseCache["Use Cached Nodes"]
-CacheCheck --> |No| Apply["Apply Transformation"]
-Apply --> PutCache["Put Transformed Nodes in Cache"]
-PutCache --> Loop
-UseCache --> Loop
-Loop --> |No| Index["Build Index(es)"]
-Index --> End(["Done"])
+Start(["Call get_response_synthesizer"]) --> Resolve["Resolve templates and settings"]
+Resolve --> Mode{"ResponseMode"}
+Mode --> |REFINE| Refine["Return Refine"]
+Mode --> |COMPACT| Compact["Return CompactAndRefine"]
+Mode --> |TREE_SUMMARIZE| Tree["Return TreeSummarize"]
+Mode --> |SIMPLE_SUMMARIZE| Simple["Return SimpleSummarize"]
+Mode --> |GENERATION| Gen["Return Generation"]
+Mode --> |ACCUMULATE| Acc["Return Accumulate"]
+Mode --> |COMPACT_ACCUMULATE| CAcc["Return CompactAndAccumulate"]
+Mode --> |NO_TEXT| NoText["Return NoText"]
+Mode --> |CONTEXT_ONLY| COnly["Return ContextOnly"]
+Refine --> End(["BaseSynthesizer"])
+Compact --> End
+Tree --> End
+Simple --> End
+Gen --> End
+Acc --> End
+CAcc --> End
+NoText --> End
+COnly --> End
 ```
 
 **Diagram sources**
-- [pipeline.py](file://llama-index-core/llama_index/core/ingestion/pipeline.py#L71-L172)
-- [cache.py](file://llama-index-core/llama_index/core/ingestion/cache.py#L38-L78)
-- [node_parser/__init__.py](file://llama-index-core/llama_index/core/node_parser/__init__.py#L37-L41)
+- [factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L33-L151)
 
 **Section sources**
-- [pipeline.py](file://llama-index-core/llama_index/core/ingestion/pipeline.py#L71-L172)
-- [cache.py](file://llama-index-core/llama_index/core/ingestion/cache.py#L38-L78)
-- [node_parser/__init__.py](file://llama-index-core/llama_index/core/node_parser/__init__.py#L37-L41)
+- [factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L33-L151)
 
-### Indexing Systems
-Supported index structures include:
-- ListIndex/SummaryIndex
-- TreeIndex
-- KeywordTableIndex/RAKEKeywordTableIndex/SimpleKeywordTableIndex
-- VectorStoreIndex (and GPT variants)
-- DocumentSummaryIndex
-- KnowledgeGraphIndex
-- PropertyGraphIndex
-- MultiModalVectorStoreIndex
-- Structured stores (SQL, pandas)
-
-Index types are enumerated and mapped to internal struct types.
+### ServiceContext: Deprecation and Migration
+ServiceContext is deprecated and raises an error on instantiation. The recommended migration path is to use Settings and pass modules directly to local APIs.
 
 ```mermaid
-classDiagram
-class IndexStruct
-class ListIndex
-class TreeIndex
-class KeywordTable
-class VectorIndex
-class DocumentSummaryIndex
-class KnowledgeGraphIndex
-class PropertyGraphIndex
-IndexStruct <|-- ListIndex
-IndexStruct <|-- TreeIndex
-IndexStruct <|-- KeywordTable
-IndexStruct <|-- VectorIndex
-IndexStruct <|-- DocumentSummaryIndex
-IndexStruct <|-- KnowledgeGraphIndex
-IndexStruct <|-- PropertyGraphIndex
+flowchart TD
+A["Attempt to use ServiceContext"] --> B["Raise ValueError"]
+B --> C["Redirect to Settings or local module injection"]
 ```
 
 **Diagram sources**
-- [data_structs.py](file://llama-index-core/llama_index/core/data_structs/data_structs.py#L85-L245)
-- [struct_type.py](file://llama-index-core/llama_index/core/data_structs/struct_type.py#L52-L90)
-- [indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L4-L50)
+- [service_context.py](file://llama-index-core/llama_index/core/service_context.py#L4-L48)
 
 **Section sources**
-- [indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
-- [data_structs.py](file://llama-index-core/llama_index/core/data_structs/data_structs.py#L85-L245)
-- [struct_type.py](file://llama-index-core/llama_index/core/data_structs/struct_type.py#L52-L90)
-
-### Retrieval Engines
-Core retrievers include:
-- VectorIndexRetriever and VectorIndexAutoRetriever
-- BM25Retriever
-- RecursiveRetriever
-- QueryFusionRetriever (hybrid fusion)
-- RouterRetriever
-- TransformRetriever
-- Specialized retrievers for lists, trees, keyword tables, knowledge graphs, and property graphs
-
-```mermaid
-classDiagram
-class BaseRetriever
-class VectorIndexRetriever
-class BM25Retriever
-class RecursiveRetriever
-class QueryFusionRetriever
-class RouterRetriever
-class TransformRetriever
-BaseRetriever <|-- VectorIndexRetriever
-BaseRetriever <|-- BM25Retriever
-BaseRetriever <|-- RecursiveRetriever
-BaseRetriever <|-- QueryFusionRetriever
-BaseRetriever <|-- RouterRetriever
-BaseRetriever <|-- TransformRetriever
-```
-
-**Diagram sources**
-- [retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py#L1-L89)
-
-**Section sources**
-- [retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py#L1-L89)
-
-### Query Processing Engines
-Available engines include:
-- RetrieverQueryEngine (simple retrieval + synthesis)
-- RouterQueryEngine (route to specialized engines)
-- TransformQueryEngine (apply transformations before retrieval)
-- ComposableGraphQueryEngine (compose multiple indices)
-- SQL, JSONalyze, KnowledgeGraph, MultiModal, Retry variants, and more
-
-```mermaid
-classDiagram
-class BaseQueryEngine
-class RetrieverQueryEngine
-class RouterQueryEngine
-class TransformQueryEngine
-class ComposableGraphQueryEngine
-BaseQueryEngine <|-- RetrieverQueryEngine
-BaseQueryEngine <|-- RouterQueryEngine
-BaseQueryEngine <|-- TransformQueryEngine
-BaseQueryEngine <|-- ComposableGraphQueryEngine
-```
-
-**Diagram sources**
-- [query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
-
-**Section sources**
-- [query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
+- [service_context.py](file://llama-index-core/llama_index/core/service_context.py#L4-L48)
 
 ## Dependency Analysis
-- Settings depends on LLM resolution, embedding resolution, tokenizer utilities, node parser defaults, and prompt helper construction.
-- StorageContext aggregates stores and exposes persistence routines; vector stores are namespaced.
-- Ingestion pipeline depends on node parsers and transformations; caching depends on a cache backend.
-- Indices depend on storage context and vector/graph stores.
-- Retrievers depend on indices and optionally BM25 corpora.
-- Query engines orchestrate retrievers and synthesis.
+Settings depends on:
+- LLM and embedding model resolvers
+- CallbackManager for event observation
+- Tokenizer utilities
+- NodeParser and PromptHelper
+
+Response Synthesizer Factory depends on:
+- Settings for defaults
+- LLM and PromptHelper
+- Template selectors and response mode
 
 ```mermaid
 graph LR
-Settings --> LLMRes["LLM Resolution"]
-Settings --> EmbRes["Embedding Resolution"]
-Settings --> Tok["Tokenizer Utils"]
+Settings["Settings"] --> LLM["LLM"]
+Settings --> Embed["Embedding Model"]
+Settings --> CM["CallbackManager"]
 Settings --> NP["NodeParser"]
 Settings --> PH["PromptHelper"]
-SC["StorageContext"] --> DS["DocStore"]
-SC --> IS["IndexStore"]
-SC --> VS["VectorStores"]
-SC --> GS["GraphStore"]
-SC --> PGS["PropertyGraphStore"]
-NP --> TR["Transformations"]
-TR --> IC["IngestionCache"]
-TR --> IDX["Indices"]
-IDX --> VR["VectorRetriever"]
-IDX --> BR["BM25Retriever"]
-VR --> QE["QueryEngine"]
-BR --> QE
-QE --> OUT["Response"]
+RSF["Response Synthesizer Factory"] --> Settings
+RSF --> LLM
+RSF --> PH
 ```
 
 **Diagram sources**
 - [settings.py](file://llama-index-core/llama_index/core/settings.py#L32-L74)
-- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L73-L149)
-- [pipeline.py](file://llama-index-core/llama_index/core/ingestion/pipeline.py#L71-L105)
-- [cache.py](file://llama-index-core/llama_index/core/ingestion/cache.py#L38-L78)
-- [indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L46-L50)
-- [retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py#L40-L48)
-- [query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L31-L33)
+- [settings.py](file://llama-index-core/llama_index/core/settings.py#L198-L230)
+- [factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L33-L79)
 
 **Section sources**
-- [settings.py](file://llama-index-core/llama_index/core/settings.py#L17-L248)
-- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L52-L278)
-- [pipeline.py](file://llama-index-core/llama_index/core/ingestion/pipeline.py#L71-L172)
-- [cache.py](file://llama-index-core/llama_index/core/ingestion/cache.py#L38-L78)
-- [indices/__init__.py](file://llama-index-core/llama_index/core/indices/__init__.py#L1-L88)
-- [retrievers/__init__.py](file://llama-index-core/llama_index/core/retrievers/__init__.py#L1-L89)
-- [query_engine/__init__.py](file://llama-index-core/llama_index/core/query_engine/__init__.py#L1-L88)
+- [settings.py](file://llama-index-core/llama_index/core/settings.py#L32-L74)
+- [settings.py](file://llama-index-core/llama_index/core/settings.py#L198-L230)
+- [factory.py](file://llama-index-core/llama_index/core/response_synthesizers/factory.py#L33-L79)
 
 ## Performance Considerations
-- Use IngestionCache to avoid recomputation of expensive transformations.
-- Tune chunk_size and chunk_overlap via Settings.node_parser to balance recall and cost.
-- Prefer vector stores with native filtering and metadata support for large corpora.
-- Use hybrid fusion (vector + BM25) judiciously; adjust top-k per retriever to reduce redundant work.
-- Persist StorageContext to minimize cold-start costs during application restarts.
-- Leverage async transformation runs for IO-bound steps.
-
-[No sources needed since this section provides general guidance]
+- Lazy initialization in Settings avoids unnecessary overhead until components are accessed
+- Using StorageContext.from_defaults with a persist_dir enables efficient persistence and reuse of stores
+- Choose ResponseMode based on workload characteristics (compact vs tree summarize vs accumulate)
+- Tune chunk_size and chunk_overlap via Settings.node_parser to balance recall and cost
 
 ## Troubleshooting Guide
-Common issues and remedies:
-- ServiceContext errors: Replace with Settings usage or pass modules directly to APIs.
-- Missing or incompatible node parser attributes: Ensure chunk_size/chunk_overlap are supported by the configured node parser.
-- Cache not persisting: Only SimpleCache supports persistence; verify backend type.
-- Retrieval quality: Adjust similarity_top_k, reranking, and fusion weights; validate BM25 corpus and tokenizer settings.
+Common issues and resolutions:
+- ServiceContext usage: Replace with Settings or pass modules directly to APIs
+- Missing prompt helper: Settings will construct a default PromptHelper from LLM metadata
+- Callback handler conflicts: Ensure unique handler types in CallbackManager
+- Persistence failures: Verify persist_dir permissions and that stores support to_dict/from_dict
 
 **Section sources**
 - [service_context.py](file://llama-index-core/llama_index/core/service_context.py#L4-L48)
-- [settings.py](file://llama-index-core/llama_index/core/settings.py#L154-L183)
-- [cache.py](file://llama-index-core/llama_index/core/ingestion/cache.py#L55-L62)
+- [settings.py](file://llama-index-core/llama_index/core/settings.py#L198-L230)
+- [base.py](file://llama-index-core/llama_index/core/callbacks/base.py#L57-L85)
+- [storage_context.py](file://llama-index-core/llama_index/core/storage/storage_context.py#L204-L266)
 
 ## Conclusion
-LlamaIndex’s core framework provides a cohesive, extensible foundation for RAG applications:
-- Configure globally via Settings
-- Persist state with StorageContext
-- Transform and cache data efficiently with the ingestion pipeline
-- Choose appropriate indices and retrievers for your workload
-- Orchestrate queries with flexible query engines
+LlamaIndex’s core framework centers on a clean separation of concerns:
+- Settings provides a unified, lazily-initialized configuration surface
+- Schema and Types define robust, serializable data structures and shared abstractions
+- StorageContext organizes persistence stores
+- Response Synthesizer Factory applies strategy and factory patterns to choose behavior
+- ServiceContext is deprecated in favor of explicit configuration via Settings and local module injection
 
-Adopting these patterns ensures maintainability, scalability, and performance across diverse RAG scenarios.
+Adopting Settings and StorageContext simplifies configuration, improves modularity, and aligns with modern Python packaging and dependency injection practices.
